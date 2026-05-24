@@ -53,6 +53,7 @@ interface ControlPanelProps {
   syncOrderPitStop: (driverId: string) => void;
   syncRetireDriver: (driverId: string, reason: string) => void;
   syncReinstateDriver: (driverId: string) => void;
+  syncSetBulkPositions: (orderedCarNumbers: string[]) => void;
   selectedDriverId: string | null;
   setSelectedDriverId: (id: string | null) => void;
 }
@@ -73,12 +74,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   syncOrderPitStop,
   syncRetireDriver,
   syncReinstateDriver,
+  syncSetBulkPositions,
   selectedDriverId,
   setSelectedDriverId,
 }) => {
   const [syncLapVal, setSyncLapVal] = useState<number>(lap);
   const [retireReason, setRetireReason] = useState<string>('Crash Turn 2');
   const [cautionReasonInput, setCautionReasonInput] = useState<string>('');
+  const [bulkStandingsText, setBulkStandingsText] = useState<string>('');
 
   // Sort dropdown drivers by current standings position
   const dropdownDrivers = [...drivers].sort((a, b) => a.currentPos - b.currentPos);
@@ -673,6 +676,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }
   };
 
+  const handleBulkStandingsSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const numbers = bulkStandingsText
+      .split(/[\s,;\n]+/)
+      .map(s => s.trim().replace('#', ''))
+      .filter(Boolean);
+    if (numbers.length > 0) {
+      syncSetBulkPositions(numbers);
+    }
+  };
+
   const handleRetire = () => {
     if (selectedDriverId) {
       syncRetireDriver(selectedDriverId, retireReason);
@@ -1066,6 +1080,48 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* 4. Bulk Standings Sync */}
+          <div style={{ marginTop: '12px', borderTop: '1px dashed rgba(255, 77, 0, 0.15)', paddingTop: '10px' }}>
+            <form onSubmit={handleBulkStandingsSubmit}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label className="stat-label">Bulk Standings Sync (Car #s)</label>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    const runningCarNums = drivers
+                      .filter(d => d.status !== 'out')
+                      .sort((a, b) => a.currentPos - b.currentPos)
+                      .map(d => d.carNumber)
+                      .join(', ');
+                    setBulkStandingsText(runningCarNums);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--cyan-accent)',
+                    fontSize: '9px',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    padding: '2px 4px'
+                  }}
+                >
+                  📋 Load Current Order
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 10, 9, 26, 5, 23..."
+                  value={bulkStandingsText}
+                  onChange={(e) => setBulkStandingsText(e.target.value)}
+                  style={{ flex: 1, padding: '6px 10px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '11px' }}
+                />
+                <button type="submit" className="sync-btn" style={{ flex: 'none', width: '110px' }}>Apply Order</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

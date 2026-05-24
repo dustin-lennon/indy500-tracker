@@ -33,7 +33,8 @@ function App() {
     syncRetireDriver,
     syncReinstateDriver,
     syncMoveDriver,
-    syncSetDriverPosition
+    syncSetDriverPosition,
+    syncSetBulkPositions
   } = useRaceSimulation();
 
   useEffect(() => {
@@ -133,6 +134,7 @@ function App() {
                 syncOrderPitStop={syncOrderPitStop}
                 syncRetireDriver={syncRetireDriver}
                 syncReinstateDriver={syncReinstateDriver}
+                syncSetBulkPositions={syncSetBulkPositions}
                 selectedDriverId={selectedDriverId}
                 setSelectedDriverId={setSelectedDriverId}
               />

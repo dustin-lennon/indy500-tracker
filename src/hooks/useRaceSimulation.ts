@@ -898,6 +898,60 @@ export const useRaceSimulation = () => {
     });
   }, []);
 
+  const syncSetBulkPositions = useCallback((orderedCarNumbers: string[]) => {
+    setDrivers(prev => {
+      const running = prev.filter(d => d.status !== 'out');
+      const retired = prev.filter(d => d.status === 'out');
+      
+      const runningMap = new Map<string, Driver>();
+      running.forEach(d => {
+        runningMap.set(d.carNumber, d);
+      });
+
+      const reorderedRunning: Driver[] = [];
+      const seenIds = new Set<string>();
+
+      orderedCarNumbers.forEach(carNum => {
+        const trimmed = carNum.trim();
+        const d = runningMap.get(trimmed);
+        if (d) {
+          reorderedRunning.push(d);
+          seenIds.add(d.id);
+        }
+      });
+
+      const remainingRunning = running.filter(d => !seenIds.has(d.id));
+      remainingRunning.sort((a, b) => a.currentPos - b.currentPos);
+      
+      const allRunning = [...reorderedRunning, ...remainingRunning];
+      const distances = running.map(d => d.totalDistance).sort((a, b) => b - a);
+
+      const updatedRunning = allRunning.map((d, idx) => {
+        const dist = distances[idx] !== undefined ? distances[idx] : 0.88 - (idx * 0.005);
+        return {
+          ...d,
+          totalDistance: dist,
+          lap: Math.floor(dist),
+          distanceIntoLap: dist % 1
+        };
+      });
+
+      const merged = [...updatedRunning, ...retired];
+
+      return merged.map((d, idx) => {
+        if (d.status === 'out') return d;
+        const newPos = idx + 1;
+        return {
+          ...d,
+          prevPos: d.currentPos,
+          currentPos: newPos
+        };
+      });
+    });
+
+    addEvent('info', 'Race Sync: Leaderboard standings updated via bulk input.', flag);
+  }, [addEvent, flag]);
+
   return {
     drivers,
     flag,
@@ -922,6 +976,7 @@ export const useRaceSimulation = () => {
     syncRetireDriver,
     syncReinstateDriver,
     syncMoveDriver,
-    syncSetDriverPosition
+    syncSetDriverPosition,
+    syncSetBulkPositions
   };
 };

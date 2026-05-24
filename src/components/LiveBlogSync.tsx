@@ -243,6 +243,24 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
     }
   };
 
+  const handleFastForwardAll = () => {
+    if (posts.length === 0) return;
+    const chronological = [...posts].sort((a, b) => new Date(a.datePublished).getTime() - new Date(b.datePublished).getTime());
+    let appliedCount = 0;
+    const newSyncedIds: string[] = [];
+    
+    chronological.forEach(post => {
+      const actions = parseAndApplyPost(post);
+      newSyncedIds.push(post.id);
+      if (actions.length > 0) {
+        appliedCount += actions.length;
+      }
+    });
+    
+    setSyncedPostIds(newSyncedIds);
+    addLog(`Fast-forward: Replayed ${posts.length} blog updates chronologically (${appliedCount} actions applied).`);
+  };
+
   // Poll intervals
   useEffect(() => {
     fetchLiveBlog(); // initial fetch
@@ -269,7 +287,17 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
         <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span>📰</span> FOX Sports Live Updates
         </h3>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          {mode === 'live' && posts.length > 0 && (
+            <button 
+              type="button"
+              className="reset-btn" 
+              onClick={handleFastForwardAll}
+              style={{ fontSize: '9px', padding: '3px 6px', borderColor: 'var(--cyan-accent)', color: 'var(--cyan-accent)' }}
+            >
+              ⏩ Replay Blog History
+            </button>
+          )}
           <button 
             type="button"
             className="reset-btn" 
