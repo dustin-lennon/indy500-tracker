@@ -27,7 +27,8 @@ function App() {
     syncSetLap,
     syncOrderPitStop,
     syncRetireDriver,
-    syncMoveDriver
+    syncMoveDriver,
+    syncSetDriverPosition
   } = useRaceSimulation();
 
   const selectedDriver = drivers.find((d) => d.id === selectedDriverId);
@@ -83,6 +84,7 @@ function App() {
             mode={mode}
             setSelectedDriverId={setSelectedDriverId}
             syncMoveDriver={syncMoveDriver}
+            syncSetDriverPosition={syncSetDriverPosition}
           />
         </section>
 

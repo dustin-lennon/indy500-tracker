@@ -819,6 +819,55 @@ export const useRaceSimulation = () => {
     });
   }, []);
 
+  const syncSetDriverPosition = useCallback((driverId: string, targetPos: number) => {
+    setDrivers(prev => {
+      const running = prev.filter(d => d.status !== 'out');
+      const retired = prev.filter(d => d.status === 'out');
+      
+      // Sort running drivers by current position
+      running.sort((a, b) => a.currentPos - b.currentPos);
+      
+      const index = running.findIndex(d => d.id === driverId);
+      if (index === -1) return prev;
+      
+      // Clamp targetPos between 1 and running.length
+      const targetIndex = Math.max(0, Math.min(targetPos - 1, running.length - 1));
+      if (index === targetIndex) return prev;
+      
+      // Get all current distance values of running drivers, sorted descending
+      const distances = running.map(d => d.totalDistance).sort((a, b) => b - a);
+      
+      // Reorder the running array: remove driver from index, insert at targetIndex
+      const [movedDriver] = running.splice(index, 1);
+      running.splice(targetIndex, 0, movedDriver);
+      
+      // Assign the sorted distance values to the new order
+      const updatedRunning = running.map((d, idx) => {
+        const dist = distances[idx];
+        return {
+          ...d,
+          totalDistance: dist,
+          lap: Math.floor(dist),
+          distanceIntoLap: dist % 1
+        };
+      });
+      
+      const merged = [...updatedRunning, ...retired];
+      
+      // Update ranks immediately
+      return merged.map((d, idx) => {
+        if (d.status === 'out') return d;
+        // Find the index in the merged list
+        const newPos = idx + 1;
+        return {
+          ...d,
+          prevPos: d.currentPos,
+          currentPos: newPos
+        };
+      });
+    });
+  }, []);
+
   return {
     drivers,
     flag,
@@ -841,6 +890,7 @@ export const useRaceSimulation = () => {
     syncSetLap,
     syncOrderPitStop,
     syncRetireDriver,
-    syncMoveDriver
+    syncMoveDriver,
+    syncSetDriverPosition
   };
 };

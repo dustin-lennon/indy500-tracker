@@ -1,12 +1,68 @@
 import React from 'react';
 import type { Driver, SimulationMode } from '../types';
 
+interface PositionInputProps {
+  currentPos: number;
+  maxPos: number;
+  onPositionChange: (newPos: number) => void;
+}
+
+const PositionInput: React.FC<PositionInputProps> = ({ currentPos, maxPos, onPositionChange }) => {
+  const [val, setVal] = React.useState<string>(String(currentPos));
+
+  React.useEffect(() => {
+    setVal(String(currentPos));
+  }, [currentPos]);
+
+  const handleSubmit = () => {
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= maxPos) {
+      onPositionChange(parsed);
+    } else {
+      setVal(String(currentPos));
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      pattern="[0-9]*"
+      inputMode="numeric"
+      value={val}
+      onChange={(e) => setVal(e.target.value.replace(/\D/g, ''))}
+      onBlur={handleSubmit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          handleSubmit();
+          e.currentTarget.blur();
+        }
+      }}
+      className="sync-pos-input"
+      style={{
+        width: '28px',
+        height: '20px',
+        background: 'rgba(0,0,0,0.4)',
+        border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: '3px',
+        color: '#fff',
+        textAlign: 'center',
+        fontSize: '11px',
+        fontFamily: 'var(--font-mono)',
+        fontWeight: 'bold',
+        outline: 'none',
+        marginRight: '6px'
+      }}
+    />
+  );
+};
+
 interface LeaderboardProps {
   drivers: Driver[];
   selectedDriverId: string | null;
   mode: SimulationMode;
   setSelectedDriverId: (id: string | null) => void;
   syncMoveDriver: (driverId: string, direction: 'up' | 'down') => void;
+  syncSetDriverPosition: (driverId: string, newPosition: number) => void;
 }
 
 export const Leaderboard: React.FC<LeaderboardProps> = ({
@@ -15,6 +71,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
   mode,
   setSelectedDriverId,
   syncMoveDriver,
+  syncSetDriverPosition,
 }) => {
   // Leader is always first in the array since useRaceSimulation updates positions
   const leader = drivers[0];
@@ -130,23 +187,32 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
 
               {/* Sync controls for live broadcast position adjustments */}
               {mode === 'live' && (
-                <span className="col-actions" onClick={(e) => e.stopPropagation()}>
-                  <button 
-                    disabled={index === 0 || isOut}
-                    className="sync-arrow-btn" 
-                    onClick={() => syncMoveDriver(driver.id, 'up')}
-                    title="Move position up"
-                  >
-                    ▲
-                  </button>
-                  <button 
-                    disabled={index === drivers.length - 1 || isOut}
-                    className="sync-arrow-btn" 
-                    onClick={() => syncMoveDriver(driver.id, 'down')}
-                    title="Move position down"
-                  >
-                    ▼
-                  </button>
+                <span className="col-actions" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
+                  <PositionInput 
+                    currentPos={driver.currentPos} 
+                    maxPos={drivers.filter(d => d.status !== 'out').length}
+                    onPositionChange={(newPos) => syncSetDriverPosition(driver.id, newPos)}
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <button 
+                      disabled={index === 0 || isOut}
+                      className="sync-arrow-btn" 
+                      onClick={() => syncMoveDriver(driver.id, 'up')}
+                      title="Move position up"
+                      style={{ width: '16px', height: '10px', fontSize: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
+                    >
+                      ▲
+                    </button>
+                    <button 
+                      disabled={index === drivers.filter(d => d.status !== 'out').length - 1 || isOut}
+                      className="sync-arrow-btn" 
+                      onClick={() => syncMoveDriver(driver.id, 'down')}
+                      title="Move position down"
+                      style={{ width: '16px', height: '10px', fontSize: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
+                    >
+                      ▼
+                    </button>
+                  </div>
                 </span>
               )}
             </div>
@@ -169,7 +235,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
         }
         
         .leaderboard-container:has(.col-actions) .leaderboard-header {
-          grid-template-columns: 35px 35px 35px 1fr 75px 80px 25px 50px;
+          grid-template-columns: 35px 35px 35px 1fr 70px 75px 25px 85px;
         }
 
         .leaderboard-list {
@@ -191,7 +257,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
         }
         
         .leaderboard-container:has(.col-actions) .driver-row {
-          grid-template-columns: 35px 35px 35px 1fr 75px 80px 25px 50px;
+          grid-template-columns: 35px 35px 35px 1fr 70px 75px 25px 85px;
         }
 
         .driver-row:hover {
