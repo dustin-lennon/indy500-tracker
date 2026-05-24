@@ -57,6 +57,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     driversRef.current = drivers;
   }, [drivers]);
 
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
   const addVoiceEvent = (msg: string) => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -119,10 +124,42 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const processVoiceCommand = (text: string) => {
     const cleanText = text.toLowerCase();
     
+    // Playback start/pause general commands
+    const startTriggers = [
+      'start the race', 'start race', 'start the simulation', 'start simulation', 
+      'start the sim', 'start sim', 'play simulation', 'play sim', 'resume simulation', 
+      'resume sim', 'play the sim', 'start your engines', 'start the engine', 
+      'engines are started', 'engines are fired', 'green flag is out', 'pace car is off'
+    ];
+    const shouldPlay = startTriggers.some(trigger => cleanText.includes(trigger));
+
+    const pauseTriggers = [
+      'pause the race', 'pause race', 'pause the simulation', 'pause simulation',
+      'pause the sim', 'pause sim', 'stop simulation', 'stop sim', 'stop the race',
+      'halt the race', 'halt simulation'
+    ];
+    const shouldPause = pauseTriggers.some(trigger => cleanText.includes(trigger));
+
+    if (shouldPlay && !isPlayingRef.current) {
+      togglePlay();
+      addVoiceEvent('Sim started via voice command');
+      if (flag === 'red') {
+        syncSetFlag('yellow', 'Pace laps started via voice command');
+      }
+      return;
+    } else if (shouldPause && isPlayingRef.current) {
+      togglePlay();
+      addVoiceEvent('Sim paused via voice command');
+      return;
+    }
+
     // 1. Check Flags
     if (cleanText.includes('green flag') || cleanText.includes('green green green') || cleanText.includes('back to green') || cleanText.includes('racing again') || cleanText.includes('restart')) {
       syncSetFlag('green');
       addVoiceEvent('Flag synced to GREEN');
+      if (!isPlayingRef.current) {
+        togglePlay();
+      }
       return;
     }
     if (cleanText.includes('yellow flag') || cleanText.includes('caution is out') || cleanText.includes('safety car') || cleanText.includes('pace car') || cleanText.includes('full course yellow')) {
@@ -134,11 +171,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       }
       syncSetFlag('yellow', reason);
       addVoiceEvent(`Flag synced to YELLOW (${reason})`);
+      if (!isPlayingRef.current) {
+        togglePlay();
+      }
       return;
     }
     if (cleanText.includes('red flag') || cleanText.includes('race is stopped') || cleanText.includes('stopped the race')) {
       syncSetFlag('red');
       addVoiceEvent('Flag synced to RED');
+      if (isPlayingRef.current) {
+        togglePlay();
+      }
       return;
     }
     if (cleanText.includes('white flag') || cleanText.includes('final lap') || cleanText.includes('one lap to go')) {
