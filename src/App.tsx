@@ -1,11 +1,15 @@
+import { useState, useEffect } from 'react';
 import { useRaceSimulation } from './hooks/useRaceSimulation';
 import { ControlPanel } from './components/ControlPanel';
 import { SVGTrackMap } from './components/SVGTrackMap';
 import { Leaderboard } from './components/Leaderboard';
 import { TelemetryCard } from './components/TelemetryCard';
 import { SpotterLog } from './components/SpotterLog';
+import { LiveBlogSync } from './components/LiveBlogSync';
 
 function App() {
+  const [activeTab, setActiveTab] = useState<'spotter' | 'blog'>('spotter');
+
   const {
     drivers,
     flag,
@@ -31,6 +35,14 @@ function App() {
     syncMoveDriver,
     syncSetDriverPosition
   } = useRaceSimulation();
+
+  useEffect(() => {
+    if (mode === 'live') {
+      setActiveTab('blog');
+    } else {
+      setActiveTab('spotter');
+    }
+  }, [mode]);
 
   const selectedDriver = drivers.find((d) => d.id === selectedDriverId);
 
@@ -124,7 +136,72 @@ function App() {
                 selectedDriverId={selectedDriverId}
                 setSelectedDriverId={setSelectedDriverId}
               />
-              <SpotterLog events={events} />
+              
+              {/* Tabbed view for Spotter and Fox Live updates */}
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                <div style={{ display: 'flex', gap: '4px', paddingLeft: '8px' }}>
+                  <button 
+                    type="button"
+                    style={{
+                      padding: '8px 16px',
+                      background: activeTab === 'spotter' ? 'var(--panel-bg)' : 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      borderBottom: activeTab === 'spotter' ? '1px solid transparent' : '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: '8px 8px 0 0',
+                      color: activeTab === 'spotter' ? '#fff' : 'var(--text-secondary)',
+                      fontSize: '9.5px',
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      cursor: 'pointer',
+                      zIndex: 2,
+                      marginBottom: '-1px',
+                      borderTop: activeTab === 'spotter' ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.06)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={() => setActiveTab('spotter')}
+                  >
+                    📻 Spotter
+                  </button>
+                  <button 
+                    type="button"
+                    style={{
+                      padding: '8px 16px',
+                      background: activeTab === 'blog' ? 'var(--panel-bg)' : 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      borderBottom: activeTab === 'blog' ? '1px solid transparent' : '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: '8px 8px 0 0',
+                      color: activeTab === 'blog' ? '#fff' : 'var(--text-secondary)',
+                      fontSize: '9.5px',
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      cursor: 'pointer',
+                      zIndex: 2,
+                      marginBottom: '-1px',
+                      borderTop: activeTab === 'blog' ? '2px solid var(--cyan-accent)' : '1px solid rgba(255,255,255,0.06)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={() => setActiveTab('blog')}
+                  >
+                    📰 FOX updates
+                  </button>
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  {activeTab === 'spotter' ? (
+                    <SpotterLog events={events} />
+                  ) : (
+                    <LiveBlogSync
+                      drivers={drivers}
+                      mode={mode}
+                      syncSetFlag={syncSetFlag}
+                      syncSetLap={syncSetLap}
+                      syncOrderPitStop={syncOrderPitStop}
+                      syncRetireDriver={syncRetireDriver}
+                    />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </section>
