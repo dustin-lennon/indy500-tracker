@@ -218,17 +218,17 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
           {/* Tire Wear (Bird's Eye Car layout) */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '1px solid rgba(255,255,255,0.04)', paddingRight: '8px' }}>
             <label className="stat-label" style={{ alignSelf: 'flex-start', marginBottom: '8px' }}>Tire Status</label>
-            <div className="tyre-grid-container">
+            <div className="tire-grid-container">
               {/* Front Tires */}
-              <div className="tyre-row">
-                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.lf) }}>
-                  <span className="tyre-label">LF</span>
-                  <span className="tyre-pct font-mono">{driver.tireWear.lf}%</span>
+              <div className="tire-row">
+                <div className="tire-box" style={{ borderColor: getTireWearColor(driver.tireWear.lf) }}>
+                  <span className="tire-label">LF</span>
+                  <span className="tire-pct font-mono">{driver.tireWear.lf}%</span>
                 </div>
                 <div className="car-chassis-top" />
-                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.rf) }}>
-                  <span className="tyre-label">RF</span>
-                  <span className="tyre-pct font-mono">{driver.tireWear.rf}%</span>
+                <div className="tire-box" style={{ borderColor: getTireWearColor(driver.tireWear.rf) }}>
+                  <span className="tire-label">RF</span>
+                  <span className="tire-pct font-mono">{driver.tireWear.rf}%</span>
                 </div>
               </div>
 
@@ -238,15 +238,15 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
               </div>
 
               {/* Rear Tires */}
-              <div className="tyre-row">
-                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.lr) }}>
-                  <span className="tyre-label">LR</span>
-                  <span className="tyre-pct font-mono">{driver.tireWear.lr}%</span>
+              <div className="tire-row">
+                <div className="tire-box" style={{ borderColor: getTireWearColor(driver.tireWear.lr) }}>
+                  <span className="tire-label">LR</span>
+                  <span className="tire-pct font-mono">{driver.tireWear.lr}%</span>
                 </div>
                 <div className="car-chassis-bot" />
-                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.rr) }}>
-                  <span className="tyre-label">RR</span>
-                  <span className="tyre-pct font-mono">{driver.tireWear.rr}%</span>
+                <div className="tire-box" style={{ borderColor: getTireWearColor(driver.tireWear.rr) }}>
+                  <span className="tire-label">RR</span>
+                  <span className="tire-pct font-mono">{driver.tireWear.rr}%</span>
                 </div>
               </div>
             </div>
@@ -494,19 +494,19 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
         }
 
         /* Tire Wear Layout styles */
-        .tyre-grid-container {
+        .tire-grid-container {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 4px;
           margin-top: 6px;
         }
-        .tyre-row {
+        .tire-row {
           display: flex;
           align-items: center;
           gap: 6px;
         }
-        .tyre-box {
+        .tire-box {
           border: 2px solid transparent;
           border-radius: 4px;
           background: #111;
@@ -519,12 +519,12 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
           box-shadow: 0 2px 5px rgba(0,0,0,0.5);
           transition: border-color 0.2s ease;
         }
-        .tyre-label {
+        .tire-label {
           font-size: 8px;
           font-weight: 700;
           color: var(--text-muted);
         }
-        .tyre-pct {
+        .tire-pct {
           font-size: 10px;
           font-weight: 700;
           color: #fff;

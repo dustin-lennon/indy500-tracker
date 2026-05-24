@@ -232,7 +232,7 @@ export const useRaceSimulation = () => {
             
             const turns = ['Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'the front stretch', 'the backstretch'];
             const turn = turns[Math.floor(Math.random() * turns.length)];
-            const reasons = ['spins out', 'touches the wall', 'suffers a tyre blowout and crashes', 'loses control'];
+            const reasons = ['spins out', 'touches the wall', 'suffers a tire blowout and crashes', 'loses control'];
             const reason = reasons[Math.floor(Math.random() * reasons.length)];
             
             addEvent('crash', `YELLOW FLAG! Caution is out! ${crashVictim.name} (Car #${crashVictim.carNumber}) ${reason} in ${turn}!`, 'yellow');
