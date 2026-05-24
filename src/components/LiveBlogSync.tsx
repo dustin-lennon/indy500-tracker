@@ -383,18 +383,30 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
     }
   };
 
-  // Initial and Polling setup
+  // Initial and Polling setup using refs to prevent infinite render loops from unstable dependencies
+  const fetchLiveBlogRef = useRef(fetchLiveBlog);
+  const fetchRacetraxRef = useRef(fetchRacetrax);
+
   useEffect(() => {
-    fetchLiveBlog();
-    fetchRacetrax();
+    fetchLiveBlogRef.current = fetchLiveBlog;
+  }, [fetchLiveBlog]);
+
+  useEffect(() => {
+    fetchRacetraxRef.current = fetchRacetrax;
+  }, [fetchRacetrax]);
+
+  useEffect(() => {
+    // Initial fetch on mount
+    fetchLiveBlogRef.current();
+    fetchRacetraxRef.current();
 
     const interval = setInterval(() => {
-      fetchLiveBlog(true);
-      fetchRacetrax(true);
+      fetchLiveBlogRef.current(true);
+      fetchRacetraxRef.current(true);
     }, 25000); // Poll feeds every 25 seconds
 
     return () => clearInterval(interval);
-  }, [fetchLiveBlog, fetchRacetrax]);
+  }, []); // Empty dependency array prevents re-triggering the interval
 
   const formatPostTime = (isoString: string): string => {
     try {
