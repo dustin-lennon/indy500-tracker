@@ -306,7 +306,7 @@ export const INITIAL_DRIVERS: Driver[] = [
     name: 'Ed Carpenter',
     carNumber: '20',
     team: 'Ed Carpenter Racing',
-    carColor: '#212121', // Dark Grey
+    carColor: '#212121', // Dark Gray
     startingPos: 13,
     currentPos: 13,
     prevPos: 13,
@@ -581,7 +581,7 @@ export const INITIAL_DRIVERS: Driver[] = [
     name: 'Romain Grosjean',
     carNumber: '77',
     team: 'Dale Coyne Racing',
-    carColor: '#9e9e9e', // Grey
+    carColor: '#9e9e9e', // Gray
     startingPos: 24,
     currentPos: 24,
     prevPos: 24,
@@ -756,7 +756,7 @@ export const INITIAL_DRIVERS: Driver[] = [
     name: 'Katherine Legge',
     carNumber: '51',
     team: 'Dale Coyne Racing',
-    carColor: '#e0e0e0', // Silver/Grey
+    carColor: '#e0e0e0', // Silver/Gray
     startingPos: 31,
     currentPos: 31,
     prevPos: 31,
