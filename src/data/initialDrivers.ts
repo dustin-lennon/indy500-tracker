@@ -628,11 +628,11 @@ export const INITIAL_DRIVERS: Driver[] = [
   },
   {
     id: '26',
-    name: 'Colton Herta',
-    carNumber: '26',
-    team: 'Andretti Global',
-    carColor: '#ff1744', // Andretti Bright Red/Yellow
-    startingPos: 26,
+    name: 'Dennis Hauger',
+    carNumber: '19',
+    team: 'Dale Coyne Racing',
+    carColor: '#29b6f6', // Light Blue/Yellow
+    startingPos: 29,
     currentPos: 26,
     prevPos: 26,
     status: 'running',
@@ -649,7 +649,7 @@ export const INITIAL_DRIVERS: Driver[] = [
     fuel: 100,
     tireWear: { lf: 100, rf: 100, lr: 100, rr: 100 },
     telemetryHistory: [],
-    skillRatings: { baseSpeed: 1.026, consistency: 93, accidentAvoidance: 81, pitStrategy: 0 }
+    skillRatings: { baseSpeed: 1.011, consistency: 90, accidentAvoidance: 85, pitStrategy: 1 }
   },
   {
     id: '27',
@@ -703,11 +703,11 @@ export const INITIAL_DRIVERS: Driver[] = [
   },
   {
     id: '29',
-    name: 'Pietro Fittipaldi',
-    carNumber: '30',
-    team: 'Rahal Letterman Lanigan',
-    carColor: '#01579b', // Blue/Yellow
-    startingPos: 29,
+    name: 'Jacob Abel',
+    carNumber: '51',
+    team: 'Abel Motorsports',
+    carColor: '#1e88e5', // Blue
+    startingPos: 30,
     currentPos: 29,
     prevPos: 29,
     status: 'running',
@@ -724,7 +724,7 @@ export const INITIAL_DRIVERS: Driver[] = [
     fuel: 100,
     tireWear: { lf: 100, rf: 100, lr: 100, rr: 100 },
     telemetryHistory: [],
-    skillRatings: { baseSpeed: 1.009, consistency: 90, accidentAvoidance: 87, pitStrategy: 1 }
+    skillRatings: { baseSpeed: 1.009, consistency: 89, accidentAvoidance: 88, pitStrategy: 1 }
   },
   {
     id: '30',

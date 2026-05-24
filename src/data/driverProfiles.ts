@@ -121,12 +121,20 @@ export const DRIVER_PROFILES: Record<string, DriverProfileData> = {
     bio: 'Son of 7-time F1 World Champion Michael Schumacher. Mick has transitioned to the NTT IndyCar Series with RLL to challenge the speedway ovals and carve out his own legacy.'
   },
   '26': {
-    age: 26,
-    nationality: 'USA',
+    age: 23,
+    nationality: 'Norway',
     indy500Wins: 0,
     championships: 0,
     qualifyingSpeed: 231.850,
-    bio: 'IndyCar\'s natural speed merchant. Colton is an incredibly fast, second-generation racer driving for Andretti Global. He is always capable of charging through the field to win.'
+    bio: 'Reigning 2025 Indy NXT Champion making his rookie debut. The Norwegian sensation drives the No. 19 Honda for Dale Coyne Racing, showing quick adaptation and extreme natural talent on ovals.'
+  },
+  '29': {
+    age: 25,
+    nationality: 'USA',
+    indy500Wins: 0,
+    championships: 0,
+    qualifyingSpeed: 231.351,
+    bio: 'Indy NXT standout making his rookie Indy 500 debut with family-run Abel Motorsports. Jacob is a rising star in American open-wheel racing, showing great promise on ovals.'
   }
 };
 
@@ -137,6 +145,7 @@ export const getDriverProfile = (id: string, name: string, team: string, startin
   // Custom heuristics based on name
   let nationality = 'USA';
   if (name.includes('Collet')) nationality = 'Brazil';
+  else if (name.includes('Hauger')) nationality = 'Norway';
   else if (name.includes('VeeKay')) nationality = 'Netherlands';
   else if (name.includes('Foster')) nationality = 'United Kingdom';
   else if (name.includes('Armstrong')) nationality = 'New Zealand';
