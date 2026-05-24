@@ -275,7 +275,7 @@ export const useRaceSimulation = () => {
       // 2. Pace Car logic
       let newPaceCarDist = paceCarDistance;
       if (flag === 'yellow') {
-        newPaceCarDist += (80 * tickTime) / 90000; // Pace car runs at constant 80mph
+        newPaceCarDist += (80 * tickTime) / 9000; // Pace car runs at constant 80mph
         if (newPaceCarDist >= 1.0) newPaceCarDist -= 1.0;
         setPaceCarDistance(newPaceCarDist);
       }
@@ -461,7 +461,7 @@ export const useRaceSimulation = () => {
         if (currentSpeed > 0) {
           // Yellow flag burns 4x less fuel/tires
           const degradationFactor = flag === 'yellow' ? 0.25 : 1.0;
-          const consumption = 0.0003 * speedMultiplier * degradationFactor;
+          const consumption = 0.00007 * speedMultiplier * degradationFactor;
           
           fuel = Math.max(fuel - consumption * 1.1, 0);
           
@@ -504,7 +504,7 @@ export const useRaceSimulation = () => {
         let driverLap = driver.lap;
 
         if (currentSpeed > 0) {
-          distanceIntoLap += (currentSpeed * tickTime) / 90000;
+          distanceIntoLap += (currentSpeed * tickTime) / 9000;
           
           if (distanceIntoLap >= 1.0) {
             distanceIntoLap -= 1.0;
