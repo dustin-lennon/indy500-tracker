@@ -222,8 +222,8 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
           {/* Pit Wall line */}
           <line x1="200" y1="281" x2="600" y2="281" stroke="rgba(255,255,255,0.15)" strokeWidth="2" />
 
-          {/* SAFETY / PACE CAR (under yellow flag) */}
-          {flag === 'yellow' && pathPoints.length > 0 && (
+          {/* SAFETY / PACE CAR (under yellow flag or pre-race grid) */}
+          {(flag === 'yellow' || (flag === 'red' && lap === 0)) && pathPoints.length > 0 && (
             (() => {
               const pt = getCarCoordinates(paceCarDistance, false);
               return (

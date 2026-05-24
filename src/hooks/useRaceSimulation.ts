@@ -31,7 +31,7 @@ export const useRaceSimulation = () => {
   });
   
   const [flag, setFlag] = useState<RaceFlag>('red'); // Start under red (paused/warmup)
-  const [prevFlag, setPrevFlag] = useState<RaceFlag>('green'); // To resume after red
+  const [prevFlag, setPrevFlag] = useState<RaceFlag>('yellow'); // To resume after red (start under yellow pace laps)
   const [lap, setLap] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState<string>('00:00:00.0');
   const [mode, setMode] = useState<SimulationMode>('scripted');
@@ -39,7 +39,7 @@ export const useRaceSimulation = () => {
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>('1'); // Select Palou by default
   const [events, setEvents] = useState<RaceEvent[]>([]);
-  const [paceCarDistance, setPaceCarDistance] = useState<number>(0);
+  const [paceCarDistance, setPaceCarDistance] = useState<number>(0.93); // Start just ahead of pole position (0.88)
   
   // Refs for loop timing and tickers
   const simTimeRef = useRef<number>(0);
@@ -113,10 +113,11 @@ export const useRaceSimulation = () => {
       })
     );
     setFlag('red');
+    setPrevFlag('yellow'); // Warmup pace laps first
     setLap(0);
     setElapsedTime('00:00:00.0');
     setEvents([]);
-    setPaceCarDistance(0);
+    setPaceCarDistance(0.93); // Placed just in front of pole
     setIsPlaying(false);
     
     const introMsg = "Welcome to the 110th Indianapolis 500. The field of 33 is lined up on the grid. Ready for command.";
@@ -158,14 +159,15 @@ export const useRaceSimulation = () => {
       // Track flag transitions or scripted events based on leader's lap
       const leaderLap = currentLeader ? currentLeader.lap : 0;
       
+      // ---- WARMUP TO GREEN TRANSITION (Pace Car pits, field goes green) ----
+      if (flag === 'yellow' && leaderLap === 0 && paceCarDistance >= 0.33 && paceCarDistance < 0.50) {
+        setFlag('green');
+        addEvent('green', "GREEN FLAG! Green, green, green! The 110th Indianapolis 500 is underway!", 'green');
+      }
+
       // ---- SCRIPTED STORY ENGINE ----
       if (mode === 'scripted' && flag !== 'red') {
-        if (leaderLap === 0 && events.length <= 1 && simTimeRef.current > 1 && flag === 'yellow') {
-          // Warmup completed, start!
-          setFlag('green');
-          addEvent('green', "GREEN FLAG! Green, green, green! The 110th Indianapolis 500 is underway!", 'green');
-        }
-        else if (leaderLap === 12 && lastEventLapRef.current < 12) {
+        if (leaderLap === 12 && lastEventLapRef.current < 12) {
           lastEventLapRef.current = 12;
           // Pato O'Ward takes the lead
           addEvent('lead_change', "Pato O'Ward (Car #5) makes a bold move in Turn 1 and takes the lead!", 'green');
@@ -529,7 +531,7 @@ export const useRaceSimulation = () => {
 
         // 3-wide start and racing line lateral offset simulation
         let targetOffset = 0;
-        const isStartGrid = driverLap === 0 && distanceIntoLap < 0.95;
+        const isStartGrid = (driverLap === 0 && flag === 'yellow') || (driverLap === 0 && distanceIntoLap < 0.92);
         
         if (isStartGrid) {
           const gridCol = (driver.startingPos - 1) % 3;
