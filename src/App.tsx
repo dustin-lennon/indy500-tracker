@@ -92,6 +92,7 @@ function App() {
           <SVGTrackMap
             drivers={drivers}
             flag={flag}
+            lap={lap}
             selectedDriverId={selectedDriverId}
             paceCarDistance={paceCarDistance}
             setSelectedDriverId={setSelectedDriverId}

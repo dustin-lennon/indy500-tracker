@@ -4,6 +4,7 @@ import type { Driver, RaceFlag } from '../types';
 interface SVGTrackMapProps {
   drivers: Driver[];
   flag: RaceFlag;
+  lap: number;
   selectedDriverId: string | null;
   paceCarDistance: number;
   setSelectedDriverId: (id: string | null) => void;
@@ -17,6 +18,7 @@ interface Point {
 export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
   drivers,
   flag,
+  lap,
   selectedDriverId,
   paceCarDistance,
   setSelectedDriverId,
