@@ -1,0 +1,761 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Driver, RaceEvent, RaceFlag, SimulationMode, TelemetryPoint } from '../types';
+import { INITIAL_DRIVERS } from '../data/initialDrivers';
+
+// Helpers
+const formatTime = (totalSeconds: number): string => {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.floor(totalSeconds % 60);
+  const ms = Math.floor((totalSeconds % 1) * 10);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+};
+
+export const useRaceSimulation = () => {
+  // State
+  const [drivers, setDrivers] = useState<Driver[]>(() => {
+    // Distribute starting distances slightly so they start in rows of 3
+    return INITIAL_DRIVERS.map((d, i) => ({
+      ...d,
+      distanceIntoLap: 0.9 - (i * 0.008), // Scaffolds the grid behind the start/finish line (1.0/0.0)
+      totalDistance: - (i * 0.008)
+    }));
+  });
+  
+  const [flag, setFlag] = useState<RaceFlag>('red'); // Start under red (paused/warmup)
+  const [prevFlag, setPrevFlag] = useState<RaceFlag>('green'); // To resume after red
+  const [lap, setLap] = useState<number>(0);
+  const [elapsedTime, setElapsedTime] = useState<string>('00:00:00.0');
+  const [mode, setMode] = useState<SimulationMode>('scripted');
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>('1'); // Select Palou by default
+  const [events, setEvents] = useState<RaceEvent[]>([]);
+  const [paceCarDistance, setPaceCarDistance] = useState<number>(0);
+  
+  // Refs for loop timing and tickers
+  const simTimeRef = useRef<number>(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const cautionLapsLeftRef = useRef<number>(0);
+  const lastEventLapRef = useRef<number>(0);
+  const cautionOrderRef = useRef<string[]>([]); // Saves standing order at caution start
+  
+  // Audio Speech Synthesis queue helper
+  const speak = useCallback((text: string) => {
+    if (localStorage.getItem('spotter_muted') === 'true') return;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Cancel current to read the latest alert
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.1;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  }, []);
+
+  // Event logger helper
+  const addEvent = useCallback((
+    type: RaceEvent['type'], 
+    message: string, 
+    flagColor: RaceFlag
+  ) => {
+    const newEvent: RaceEvent = {
+      id: Math.random().toString(36).substr(2, 9),
+      lap: Math.max(...drivers.map(d => d.lap), 0),
+      time: formatTime(simTimeRef.current),
+      type,
+      message,
+      flagColor
+    };
+    setEvents(prev => [newEvent, ...prev].slice(0, 100)); // Cap at 100 events
+    speak(message);
+  }, [drivers, speak]);
+
+  // Reset function
+  const resetRace = useCallback(() => {
+    simTimeRef.current = 0;
+    cautionLapsLeftRef.current = 0;
+    lastEventLapRef.current = 0;
+    cautionOrderRef.current = [];
+    
+    setDrivers(
+      INITIAL_DRIVERS.map((d, i) => ({
+        ...d,
+        distanceIntoLap: 0.9 - (i * 0.008),
+        totalDistance: - (i * 0.008),
+        status: 'running',
+        outReason: undefined,
+        pitStops: 0,
+        lastPitLap: 0,
+        lap: 0,
+        speed: 0,
+        rpm: 0,
+        gear: 1,
+        throttle: 0,
+        brake: 0,
+        fuel: 100,
+        tireWear: { lf: 100, rf: 100, lr: 100, rr: 100 },
+        telemetryHistory: []
+      }))
+    );
+    setFlag('red');
+    setLap(0);
+    setElapsedTime('00:00:00.0');
+    setEvents([]);
+    setPaceCarDistance(0);
+    setIsPlaying(false);
+    
+    const introMsg = "Welcome to the 110th Indianapolis 500. The field of 33 is lined up on the grid. Ready for command.";
+    setTimeout(() => {
+      const newEvent: RaceEvent = {
+        id: 'start',
+        lap: 0,
+        time: '00:00:00.0',
+        type: 'info',
+        message: introMsg,
+        flagColor: 'red'
+      };
+      setEvents([newEvent]);
+      speak(introMsg);
+    }, 200);
+  }, [speak]);
+
+  // Handle initial greeting
+  useEffect(() => {
+    resetRace();
+  }, []);
+
+  // Update loop logic (tick occurs every 100ms in real time)
+  const tick = useCallback(() => {
+    if (flag === 'red') return; // Red flag stops all movement
+
+    // 1. Advance simulation time
+    const tickTime = 0.1 * speedMultiplier;
+    simTimeRef.current += tickTime;
+    setElapsedTime(formatTime(simTimeRef.current));
+
+    setDrivers(prevDrivers => {
+      // Find current leader's lap to set race lap state
+      const currentLeader = [...prevDrivers].sort((a, b) => b.totalDistance - a.totalDistance)[0];
+      if (currentLeader && currentLeader.lap !== lap) {
+        setLap(currentLeader.lap);
+      }
+
+      // Track flag transitions or scripted events based on leader's lap
+      const leaderLap = currentLeader ? currentLeader.lap : 0;
+      
+      // ---- SCRIPTED STORY ENGINE ----
+      if (mode === 'scripted' && flag !== 'red') {
+        if (leaderLap === 0 && events.length <= 1 && simTimeRef.current > 1 && flag === 'yellow') {
+          // Warmup completed, start!
+          setFlag('green');
+          addEvent('green', "GREEN FLAG! Green, green, green! The 110th Indianapolis 500 is underway!", 'green');
+        }
+        else if (leaderLap === 12 && lastEventLapRef.current < 12) {
+          lastEventLapRef.current = 12;
+          // Pato O'Ward takes the lead
+          addEvent('lead_change', "Pato O'Ward (Car #5) makes a bold move in Turn 1 and takes the lead!", 'green');
+        } 
+        else if (leaderLap === 35 && lastEventLapRef.current < 35 && flag === 'green') {
+          lastEventLapRef.current = 35;
+          setFlag('yellow');
+          cautionLapsLeftRef.current = 4;
+          // Spin Turn 4
+          const driverToCrash = prevDrivers.find(d => d.carNumber === '51'); // Legge
+          if (driverToCrash) {
+            addEvent('crash', "YELLOW FLAG! Spin in Turn 4 by Katherine Legge, Car #51! Field is slowing down.", 'yellow');
+          }
+        }
+        else if (leaderLap === 65 && lastEventLapRef.current < 65 && flag === 'green') {
+          lastEventLapRef.current = 65;
+          addEvent('info', "Pit Stop cycles have begun. Leaders are diving onto pit road!", 'green');
+        }
+        else if (leaderLap === 110 && lastEventLapRef.current < 110) {
+          lastEventLapRef.current = 110;
+          addEvent('info', "Conor Daly, Car #24 is slow on the backstretch, pulling into the pits. Smoke from the engine. He is OUT.", 'green');
+        }
+        else if (leaderLap === 150 && lastEventLapRef.current < 150 && flag === 'green') {
+          lastEventLapRef.current = 150;
+          setFlag('yellow');
+          cautionLapsLeftRef.current = 5;
+          addEvent('crash', "YELLOW FLAG! Heavy crash in Turn 2 involving Romain Grosjean (Car #77) and Sting Ray Robb (Car #41). Medical crews are responding.", 'yellow');
+        }
+        else if (leaderLap === 185 && lastEventLapRef.current < 185 && flag === 'green') {
+          lastEventLapRef.current = 185;
+          setFlag('yellow');
+          cautionLapsLeftRef.current = 4;
+          addEvent('crash', "YELLOW FLAG! Single car incident. Alexander Rossi, Car #7 spins out of Turn 4 and hits the pit wall! Debris on front stretch.", 'yellow');
+        }
+        else if (leaderLap === 199 && lastEventLapRef.current < 199 && flag === 'green') {
+          lastEventLapRef.current = 199;
+          addEvent('white', "WHITE FLAG! 1 lap to go! Josef Newgarden leads Alex Palou by a car length!", 'white');
+        }
+        else if (leaderLap >= 200) {
+          setIsPlaying(false);
+          setFlag('checkered');
+          const winner = [...prevDrivers].sort((a, b) => b.totalDistance - a.totalDistance)[0];
+          addEvent('checkered', `CHECKERED FLAG! ${winner.name} wins the 110th Indianapolis 500! What a spectacular finish!`, 'checkered');
+          return prevDrivers.map(d => ({ ...d, speed: 0, throttle: 0, brake: 0 }));
+        }
+      }
+
+      // ---- SANDBOX PROCEDURAL ENGINE ----
+      if (mode === 'sandbox' && flag === 'green' && leaderLap < 200) {
+        // Random crash probability check (roughly once every 40-50 laps average)
+        const crashProbability = 0.00015 * speedMultiplier;
+        if (Math.random() < crashProbability) {
+          // Trigger crash
+          const activeDrivers = prevDrivers.filter(d => d.status === 'running');
+          if (activeDrivers.length > 5) {
+            // Select driver based on accident avoidance (lower avoidance = higher weight)
+            const sortedByRisk = [...activeDrivers].sort((a, b) => a.skillRatings.accidentAvoidance - b.skillRatings.accidentAvoidance);
+            const crashVictim = sortedByRisk[Math.floor(Math.random() * 4)]; // Pick from highest risk 4
+            
+            setFlag('yellow');
+            cautionLapsLeftRef.current = Math.floor(Math.random() * 3) + 3; // 3-5 caution laps
+            
+            const turns = ['Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'the front stretch', 'the backstretch'];
+            const turn = turns[Math.floor(Math.random() * turns.length)];
+            const reasons = ['spins out', 'touches the wall', 'suffers a tyre blowout and crashes', 'loses control'];
+            const reason = reasons[Math.floor(Math.random() * reasons.length)];
+            
+            addEvent('crash', `YELLOW FLAG! Caution is out! ${crashVictim.name} (Car #${crashVictim.carNumber}) ${reason} in ${turn}!`, 'yellow');
+          }
+        }
+        
+        // Random mechanical failure check (very rare)
+        if (Math.random() < 0.00004 * speedMultiplier) {
+          const activeDrivers = prevDrivers.filter(d => d.status === 'running');
+          if (activeDrivers.length > 5) {
+            const victim = activeDrivers[Math.floor(Math.random() * activeDrivers.length)];
+            addEvent('info', `${victim.name} (Car #${victim.carNumber}) reports engine issues. He is retiring to the garage.`, 'green');
+          }
+        }
+
+        // Leaderboard check for white/checkered in sandbox
+        if (leaderLap === 199 && lastEventLapRef.current < 199) {
+          lastEventLapRef.current = 199;
+          addEvent('white', `WHITE FLAG! One lap to go! ${currentLeader.name} leads the field!`, 'white');
+        } else if (leaderLap >= 200) {
+          setIsPlaying(false);
+          setFlag('checkered');
+          addEvent('checkered', `CHECKERED FLAG! ${currentLeader.name} (Car #${currentLeader.carNumber}) wins the Indianapolis 500!`, 'checkered');
+          return prevDrivers.map(d => ({ ...d, speed: 0, throttle: 0, brake: 0 }));
+        }
+      }
+
+      // Live Spotter for Sandbox / General race restarts
+      if (flag === 'yellow' && cautionLapsLeftRef.current > 0) {
+        // If leader completes another lap, reduce caution laps remaining
+        // We'll track it using the pace car or leader lap completion
+      }
+
+      // Handle Caution Laps countdown
+      if (flag === 'yellow' && cautionLapsLeftRef.current > 0) {
+        // Find pace car movement and decrement caution laps
+        // In this implementation, we decrement caution laps when the leader crosses the start/finish line (lap completes)
+      }
+
+      // 2. Pace Car logic
+      let newPaceCarDist = paceCarDistance;
+      if (flag === 'yellow') {
+        newPaceCarDist += (80 * tickTime) / 90000; // Pace car runs at constant 80mph
+        if (newPaceCarDist >= 1.0) newPaceCarDist -= 1.0;
+        setPaceCarDistance(newPaceCarDist);
+      }
+
+      // 3. Save Standing order when Caution starts, to lock positions
+      if (flag === 'yellow' && cautionOrderRef.current.length === 0) {
+        const sortedStandings = [...prevDrivers].sort((a, b) => b.totalDistance - a.totalDistance);
+        cautionOrderRef.current = sortedStandings.map(d => d.id);
+      } else if (flag === 'green' || flag === 'white') {
+        cautionOrderRef.current = []; // Clear caution standings lock
+      }
+
+      // 4. Update individual drivers
+      const updatedDrivers = prevDrivers.map((driver, index) => {
+        // If driver is out, they don't move and speed is 0
+        if (driver.status === 'out') {
+          return {
+            ...driver,
+            speed: 0,
+            rpm: 0,
+            gear: 1,
+            throttle: 0,
+            brake: 0
+          };
+        }
+
+        // Scripted retirements
+        if (mode === 'scripted') {
+          if (leaderLap >= 35 && driver.carNumber === '51') {
+            return { ...driver, status: 'out', outReason: 'Crash Turn 4', speed: 0, throttle: 0, brake: 0 };
+          }
+          if (leaderLap >= 110 && driver.carNumber === '24') {
+            return { ...driver, status: 'out', outReason: 'Engine Failure', speed: 0, throttle: 0, brake: 0 };
+          }
+          if (leaderLap >= 150 && (driver.carNumber === '77' || driver.carNumber === '41')) {
+            return { ...driver, status: 'out', outReason: 'Crash Turn 2', speed: 0, throttle: 0, brake: 0 };
+          }
+          if (leaderLap >= 185 && driver.carNumber === '7') {
+            return { ...driver, status: 'out', outReason: 'Crash Front Stretch', speed: 0, throttle: 0, brake: 0 };
+          }
+        }
+
+        // Determine track position zones (straightaways vs corners)
+        const dist = driver.distanceIntoLap;
+        const isCorner = 
+          (dist >= 0.15 && dist <= 0.225) || // Turn 1
+          (dist >= 0.25 && dist <= 0.325) || // Turn 2
+          (dist >= 0.65 && dist <= 0.725) || // Turn 3
+          (dist >= 0.75 && dist <= 0.825);   // Turn 4
+
+        let targetSpeed = 220; // Default
+        let targetThrottle = 100;
+        let targetBrake = 0;
+
+        // Decelerate/Accelerate based on flag
+        if (flag === 'yellow') {
+          targetSpeed = 80;
+          targetThrottle = 35;
+          targetBrake = 0;
+          
+          // Bunch up logic
+          if (cautionOrderRef.current.length > 0) {
+            const runningDrivers = prevDrivers.filter(d => d.status === 'running');
+            const cautionRank = cautionOrderRef.current.indexOf(driver.id);
+            
+            if (cautionRank === 0) {
+              // Leader follows the Pace Car
+              const distToPaceCar = (paceCarDistance - dist + 1) % 1;
+              if (distToPaceCar > 0.02) {
+                targetSpeed = 95; // Catch up
+                targetThrottle = 50;
+              } else if (distToPaceCar < 0.008) {
+                targetSpeed = 70; // Back off
+                targetThrottle = 20;
+                targetBrake = 10;
+              }
+            } else if (cautionRank > 0) {
+              // Follow the car in front
+              const carInFrontId = cautionOrderRef.current[cautionRank - 1];
+              const carInFront = prevDrivers.find(d => d.id === carInFrontId);
+              if (carInFront) {
+                const distToFront = (carInFront.distanceIntoLap - dist + 1) % 1;
+                const targetGap = 0.005; // Tight bunch spacing
+                
+                if (distToFront > targetGap + 0.003) {
+                  targetSpeed = 90; // Close the gap
+                  targetThrottle = 45;
+                } else if (distToFront < targetGap - 0.001) {
+                  targetSpeed = 72; // Brake to avoid collision
+                  targetThrottle = 15;
+                  targetBrake = 15;
+                }
+              }
+            }
+          }
+        } else if (driver.status === 'pitting') {
+          // Pit road logic
+          // Pit entry starts around 0.90, exit around 0.15
+          if (dist >= 0.90 || dist <= 0.15) {
+            targetSpeed = 60; // Pit road speed limit
+            targetThrottle = 30;
+            
+            // Check if at pit box (simulated around 0.98)
+            const atPitBox = dist >= 0.96 && dist <= 0.98;
+            if (atPitBox && driver.fuel < 98) {
+              // Stop!
+              targetSpeed = 0;
+              targetThrottle = 0;
+              targetBrake = 100;
+            }
+          }
+        } else {
+          // GREEN / WHITE FLAG racing physics
+          const speedMultiplierSkill = driver.skillRatings.baseSpeed;
+          
+          if (isCorner) {
+            targetSpeed = 190 * speedMultiplierSkill;
+            targetThrottle = 75 + Math.random() * 10;
+            targetBrake = Math.random() * 8;
+          } else {
+            targetSpeed = 230 * speedMultiplierSkill;
+            targetThrottle = 100;
+            targetBrake = 0;
+            
+            // Draft effect
+            // Look for a car within 0.03 ahead (close draft)
+            const aheadCar = prevDrivers
+              .filter(d => d.id !== driver.id && d.status === 'running')
+              .find(d => {
+                const diff = (d.distanceIntoLap - dist + 1) % 1;
+                return diff > 0.005 && diff < 0.025;
+              });
+              
+            if (aheadCar) {
+              targetSpeed += 6.5; // Draft speed boost
+            }
+          }
+
+          // Tire wear degradation effect
+          const avgTireWear = (driver.tireWear.lf + driver.tireWear.rf + driver.tireWear.lr + driver.tireWear.rr) / 4;
+          if (avgTireWear < 60) {
+            // Tires losing grip
+            targetSpeed -= (60 - avgTireWear) * 0.3;
+          }
+        }
+
+        // Apply smooth speed transition
+        let currentSpeed = driver.speed;
+        const accelRate = 4 * speedMultiplier; // Speed change rate per tick
+        if (currentSpeed < targetSpeed) {
+          currentSpeed = Math.min(currentSpeed + accelRate, targetSpeed);
+        } else if (currentSpeed > targetSpeed) {
+          currentSpeed = Math.max(currentSpeed - accelRate * 1.5, targetSpeed);
+        }
+
+        // Keep speed positive
+        currentSpeed = Math.max(currentSpeed, 0);
+
+        // Simulated gear and RPM
+        let gear = 6;
+        if (currentSpeed < 65) gear = 1;
+        else if (currentSpeed < 100) gear = 2;
+        else if (currentSpeed < 140) gear = 3;
+        else if (currentSpeed < 170) gear = 4;
+        else if (currentSpeed < 200) gear = 5;
+        
+        let rpm = 0;
+        if (currentSpeed > 0) {
+          const baseRpmForGear = [0, 5000, 6500, 7800, 8800, 9500, 10200];
+          rpm = baseRpmForGear[gear] + ((currentSpeed % 40) / 40) * 1800;
+          rpm = Math.min(Math.max(rpm, 4000), 12000);
+        } else {
+          rpm = driver.status === 'pitting' && driver.fuel < 98 ? 1000 : 0; // idle vs dead engine
+        }
+
+        // Tire wear and Fuel consumption (only when moving)
+        let fuel = driver.fuel;
+        let tireWear = { ...driver.tireWear };
+        let pitStops = driver.pitStops;
+        let lastPitLap = driver.lastPitLap;
+        let status = driver.status;
+
+        if (currentSpeed > 0) {
+          // Yellow flag burns 4x less fuel/tires
+          const degradationFactor = flag === 'yellow' ? 0.25 : 1.0;
+          const consumption = 0.0003 * speedMultiplier * degradationFactor;
+          
+          fuel = Math.max(fuel - consumption * 1.1, 0);
+          
+          // Indy ovals put heavy wear on Right-Front (RF) and Right-Rear (RR) tires
+          tireWear.lf = Math.max(tireWear.lf - consumption * 0.8, 0);
+          tireWear.rf = Math.max(tireWear.rf - consumption * 1.4, 0); // RF wears fastest
+          tireWear.lr = Math.max(tireWear.lr - consumption * 0.9, 0);
+          tireWear.rr = Math.max(tireWear.rr - consumption * 1.2, 0);
+        }
+
+        // Automatic pitting logic (only in sandbox/scripted modes, not broadcast sync)
+        const avgTire = (tireWear.lf + tireWear.rf + tireWear.lr + tireWear.rr) / 4;
+        if (mode !== 'live' && status === 'running' && flag === 'green' && (fuel < 12 || avgTire < 35)) {
+          // Pit next time we reach front stretch entry
+          if (dist >= 0.85 && dist <= 0.92) {
+            status = 'pitting';
+            addEvent('info', `${driver.name} (Car #${driver.carNumber}) enters pit road.`, flag);
+          }
+        }
+
+        // Stopped in pit box refuels/retreads
+        if (status === 'pitting' && currentSpeed === 0) {
+          // Add fuel and tires
+          fuel = Math.min(fuel + 5 * speedMultiplier, 100);
+          tireWear.lf = Math.min(tireWear.lf + 10 * speedMultiplier, 100);
+          tireWear.rf = Math.min(tireWear.rf + 10 * speedMultiplier, 100);
+          tireWear.lr = Math.min(tireWear.lr + 10 * speedMultiplier, 100);
+          tireWear.rr = Math.min(tireWear.rr + 10 * speedMultiplier, 100);
+
+          if (fuel >= 100 && tireWear.rf >= 100) {
+            pitStops += 1;
+            lastPitLap = driver.lap;
+            // Complete pit stop
+            addEvent('info', `${driver.name} (Car #${driver.carNumber}) service complete. Departing pit stall.`, flag);
+          }
+        }
+
+        // Advance position along track
+        let distanceIntoLap = dist;
+        let driverLap = driver.lap;
+
+        if (currentSpeed > 0) {
+          distanceIntoLap += (currentSpeed * tickTime) / 90000;
+          
+          if (distanceIntoLap >= 1.0) {
+            distanceIntoLap -= 1.0;
+            driverLap += 1;
+            
+            // Release pitting status once exiting pit lane (around Turn 1 entry, 0.15)
+            if (status === 'pitting' && distanceIntoLap >= 0.15) {
+              status = 'running';
+            }
+
+            // Scripted caution lap decrement
+            if (flag === 'yellow' && cautionLapsLeftRef.current > 0 && driver.id === currentLeader?.id) {
+              cautionLapsLeftRef.current -= 1;
+              if (cautionLapsLeftRef.current === 0) {
+                // Restart!
+                setFlag(driverLap >= 199 ? 'white' : 'green');
+                addEvent('restart', `GREEN FLAG! Race restart on lap ${driverLap}! The green flag is waving.`, 'green');
+              } else {
+                addEvent('info', `Caution Lap ${driverLap}: Safety car leading. ${cautionLapsLeftRef.current} caution laps remaining.`, 'yellow');
+              }
+            }
+          }
+        }
+
+        // Update telemetry history (for the active driver details graph, cap history size)
+        const historyPoint: TelemetryPoint = {
+          time: simTimeRef.current,
+          speed: Math.round(currentSpeed),
+          throttle: Math.round(targetThrottle),
+          brake: Math.round(targetBrake),
+          rpm: Math.round(rpm)
+        };
+        const telemetryHistory = [...driver.telemetryHistory, historyPoint].slice(-60); // Last 60 points (6 seconds of data)
+
+        return {
+          ...driver,
+          speed: Math.round(currentSpeed),
+          rpm: Math.round(rpm),
+          gear,
+          throttle: Math.round(targetThrottle),
+          brake: Math.round(targetBrake),
+          fuel: Math.round(fuel),
+          tireWear: {
+            lf: Math.round(tireWear.lf),
+            rf: Math.round(tireWear.rf),
+            lr: Math.round(tireWear.lr),
+            rr: Math.round(tireWear.rr)
+          },
+          distanceIntoLap,
+          lap: driverLap,
+          totalDistance: driverLap + distanceIntoLap,
+          status,
+          pitStops,
+          lastPitLap,
+          telemetryHistory
+        };
+      });
+
+      // 5. Standings Sorting
+      // If we are under yellow, positions are locked, sorting remains unchanged.
+      // Otherwise under Green, we sort by totalDistance descending to update ranks.
+      let sortedDrivers = [...updatedDrivers];
+      
+      if (flag !== 'yellow') {
+        const running = sortedDrivers.filter(d => d.status !== 'out');
+        const retired = sortedDrivers.filter(d => d.status === 'out');
+        
+        // Sort running by distance
+        running.sort((a, b) => b.totalDistance - a.totalDistance);
+        
+        // retired stay at the bottom, sorted in reverse order of laps completed (or original sorting)
+        retired.sort((a, b) => {
+          if (b.lap !== a.lap) return b.lap - a.lap;
+          return b.totalDistance - a.totalDistance;
+        });
+
+        const merged = [...running, ...retired];
+        
+        // Map current ranks
+        return merged.map((d, index) => {
+          const prevRank = prevDrivers.find(p => p.id === d.id)?.currentPos || d.startingPos;
+          
+          // Log Lead Changes
+          if (index === 0 && prevDrivers[0] && prevDrivers[0].id !== d.id && flag === 'green') {
+            // Lead changed!
+            const newLeader = d.name;
+            const oldLeader = prevDrivers.find(p => p.id === prevDrivers[0].id)?.name || "Unknown";
+            addEvent('lead_change', `${newLeader} (Car #${d.carNumber}) passes ${oldLeader} for the lead!`, flag);
+          }
+
+          return {
+            ...d,
+            prevPos: prevRank,
+            currentPos: index + 1
+          };
+        });
+      } else {
+        // Under yellow: standings are locked, update distances but preserve currentPos sorting from previous state
+        const rankedById = [...prevDrivers].sort((a, b) => a.currentPos - b.currentPos);
+        return rankedById.map(pd => {
+          const updatedD = updatedDrivers.find(ud => ud.id === pd.id)!;
+          return {
+            ...updatedD,
+            currentPos: pd.currentPos,
+            prevPos: pd.prevPos
+          };
+        });
+      }
+    });
+  }, [flag, speedMultiplier, mode, lap, events.length, addEvent, paceCarDistance]);
+
+  // Set up loop interval
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(tick, 100);
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying, tick]);
+
+  // Handle Red flag vs Play status
+  const togglePlay = () => {
+    if (!isPlaying) {
+      if (flag === 'red') {
+        // Resuming from paused grid
+        setFlag(prevFlag);
+      }
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+      setPrevFlag(flag);
+      setFlag('red'); // Flag lights red under pause
+    }
+  };
+
+  // ---- BROADCAST SYNC MANUAL OVERRIDES ----
+  
+  const syncSetFlag = useCallback((newFlag: RaceFlag, reason?: string) => {
+    setFlag(newFlag);
+    if (newFlag === 'yellow') {
+      cautionLapsLeftRef.current = 4;
+      const msg = reason || "YELLOW FLAG! Manual caution flag triggered. Field slowing down.";
+      addEvent('yellow', msg, 'yellow');
+    } else if (newFlag === 'green') {
+      cautionLapsLeftRef.current = 0;
+      addEvent('green', "GREEN FLAG! Manual restart triggered. Racing resumes!", 'green');
+    } else if (newFlag === 'red') {
+      addEvent('red', "RED FLAG! Race is stopped. Cars halted on front stretch.", 'red');
+    } else if (newFlag === 'white') {
+      addEvent('white', "WHITE FLAG! Manual white flag triggered. Final lap!", 'white');
+    } else if (newFlag === 'checkered') {
+      addEvent('checkered', "CHECKERED FLAG! Manual race finish triggered.", 'checkered');
+      setIsPlaying(false);
+    }
+  }, [addEvent]);
+
+  const syncSetLap = useCallback((newLap: number) => {
+    setLap(newLap);
+    setDrivers(prev => prev.map(d => {
+      if (d.status === 'out') return d;
+      // Adjust driver laps. Keep their relative distances.
+      return {
+        ...d,
+        lap: newLap,
+        totalDistance: newLap + d.distanceIntoLap
+      };
+    }));
+    addEvent('info', `Race Sync: Current race lap adjusted to Lap ${newLap}.`, flag);
+  }, [addEvent, flag]);
+
+  const syncOrderPitStop = useCallback((driverId: string) => {
+    setDrivers(prev => prev.map(d => {
+      if (d.id === driverId && d.status === 'running') {
+        addEvent('pit', `Race Sync: Pit Stop ordered for ${d.name} (Car #${d.carNumber}).`, flag);
+        return {
+          ...d,
+          status: 'pitting',
+          distanceIntoLap: 0.92 // Place them right at pit entry
+        };
+      }
+      return d;
+    }));
+  }, [addEvent, flag]);
+
+  const syncRetireDriver = useCallback((driverId: string, reason: string) => {
+    setDrivers(prev => prev.map(d => {
+      if (d.id === driverId) {
+        addEvent('crash', `Race Sync: ${d.name} (Car #${d.carNumber}) has retired. Reason: ${reason}.`, flag);
+        return {
+          ...d,
+          status: 'out',
+          outReason: reason,
+          speed: 0,
+          throttle: 0,
+          brake: 0
+        };
+      }
+      return d;
+    }));
+  }, [addEvent, flag]);
+
+  const syncMoveDriver = useCallback((driverId: string, direction: 'up' | 'down') => {
+    setDrivers(prev => {
+      // Find index in standings
+      const sorted = [...prev].sort((a, b) => a.currentPos - b.currentPos);
+      const index = sorted.findIndex(d => d.id === driverId);
+      
+      if (index === -1) return prev;
+      if (direction === 'up' && index === 0) return prev; // Already first
+      if (direction === 'down' && index === sorted.length - 1) return prev; // Already last
+      
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      
+      // Swap their totalDistance slightly to trigger rank swap
+      const driverA = sorted[index];
+      const driverB = sorted[targetIndex];
+      
+      // Swap distance values
+      const distA = driverA.totalDistance;
+      const distB = driverB.totalDistance;
+      
+      return prev.map(d => {
+        if (d.id === driverA.id) {
+          return {
+            ...d,
+            totalDistance: distB,
+            lap: Math.floor(distB),
+            distanceIntoLap: distB % 1
+          };
+        }
+        if (d.id === driverB.id) {
+          return {
+            ...d,
+            totalDistance: distA,
+            lap: Math.floor(distA),
+            distanceIntoLap: distA % 1
+          };
+        }
+        return d;
+      });
+    });
+  }, []);
+
+  return {
+    drivers,
+    flag,
+    lap,
+    elapsedTime,
+    mode,
+    isPlaying,
+    speedMultiplier,
+    selectedDriverId,
+    events,
+    paceCarDistance,
+    setIsPlaying,
+    togglePlay,
+    setSpeedMultiplier,
+    setMode,
+    setSelectedDriverId,
+    resetRace,
+    // Broadcast manual overrides
+    syncSetFlag,
+    syncSetLap,
+    syncOrderPitStop,
+    syncRetireDriver,
+    syncMoveDriver
+  };
+};
