@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Driver, RaceFlag } from '../types';
+import type { Driver, RaceFlag } from '../types';
 
 interface SVGTrackMapProps {
   drivers: Driver[];

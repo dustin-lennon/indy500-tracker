@@ -1,4 +1,4 @@
-import { Driver } from '../types';
+import type { Driver } from '../types';
 
 export const INITIAL_DRIVERS: Driver[] = [
   {

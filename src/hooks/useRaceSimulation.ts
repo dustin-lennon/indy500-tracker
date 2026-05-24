@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Driver, RaceEvent, RaceFlag, SimulationMode, TelemetryPoint } from '../types';
+import type { Driver, RaceEvent, RaceFlag, SimulationMode, TelemetryPoint } from '../types';
 import { INITIAL_DRIVERS } from '../data/initialDrivers';
 
 // Helpers

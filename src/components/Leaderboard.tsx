@@ -1,5 +1,5 @@
 import React from 'react';
-import { Driver, SimulationMode } from '../types';
+import type { Driver, SimulationMode } from '../types';
 
 interface LeaderboardProps {
   drivers: Driver[];

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RaceEvent } from '../types';
+import type { RaceEvent } from '../types';
 
 interface SpotterLogProps {
   events: RaceEvent[];

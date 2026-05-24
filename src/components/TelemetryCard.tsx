@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Driver } from '../types';
+import type { Driver } from '../types';
 
 interface TelemetryCardProps {
   driver: Driver | undefined;

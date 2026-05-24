@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RaceFlag, SimulationMode, Driver } from '../types';
+import type { RaceFlag, SimulationMode, Driver } from '../types';
 
 interface ControlPanelProps {
   flag: RaceFlag;
