@@ -779,42 +779,49 @@ export const useRaceSimulation = () => {
 
   const syncMoveDriver = useCallback((driverId: string, direction: 'up' | 'down') => {
     setDrivers(prev => {
-      // Find index in standings
-      const sorted = [...prev].sort((a, b) => a.currentPos - b.currentPos);
-      const index = sorted.findIndex(d => d.id === driverId);
+      const running = prev.filter(d => d.status !== 'out');
+      const retired = prev.filter(d => d.status === 'out');
       
+      // Sort running drivers by current position
+      running.sort((a, b) => a.currentPos - b.currentPos);
+      
+      const index = running.findIndex(d => d.id === driverId);
       if (index === -1) return prev;
-      if (direction === 'up' && index === 0) return prev; // Already first
-      if (direction === 'down' && index === sorted.length - 1) return prev; // Already last
+      
+      if (direction === 'up' && index === 0) return prev;
+      if (direction === 'down' && index === running.length - 1) return prev;
       
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       
-      // Swap their totalDistance slightly to trigger rank swap
-      const driverA = sorted[index];
-      const driverB = sorted[targetIndex];
+      // Get all current distance values of running drivers, sorted descending
+      const distances = running.map(d => d.totalDistance).sort((a, b) => b - a);
       
-      // Swap distance values
-      const distA = driverA.totalDistance;
-      const distB = driverB.totalDistance;
+      // Reorder the running array: remove driver from index, insert at targetIndex
+      const [movedDriver] = running.splice(index, 1);
+      running.splice(targetIndex, 0, movedDriver);
       
-      return prev.map(d => {
-        if (d.id === driverA.id) {
-          return {
-            ...d,
-            totalDistance: distB,
-            lap: Math.floor(distB),
-            distanceIntoLap: distB % 1
-          };
-        }
-        if (d.id === driverB.id) {
-          return {
-            ...d,
-            totalDistance: distA,
-            lap: Math.floor(distA),
-            distanceIntoLap: distA % 1
-          };
-        }
-        return d;
+      // Assign the sorted distance values to the new order
+      const updatedRunning = running.map((d, idx) => {
+        const dist = distances[idx];
+        return {
+          ...d,
+          totalDistance: dist,
+          lap: Math.floor(dist),
+          distanceIntoLap: dist % 1
+        };
+      });
+      
+      const merged = [...updatedRunning, ...retired];
+      
+      // Update ranks immediately
+      return merged.map((d, idx) => {
+        if (d.status === 'out') return d;
+        const newPos = idx + 1;
+        return {
+          ...d,
+          prevPos: d.currentPos,
+          currentPos: newPos
+        };
       });
     });
   }, []);
