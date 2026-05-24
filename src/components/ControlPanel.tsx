@@ -188,14 +188,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       'resume sim', 'play the sim', 'start your engines', 'start the engine', 
       'engines are started', 'engines are fired', 'green flag is out', 'pace car is off'
     ];
-    const shouldPlay = startTriggers.some(trigger => cleanText.includes(trigger));
+    
+    // Broad overlap check for "start your engines" commands (handles voice typos)
+    const hasStartWord = ['start', 'fire', 'play', 'resume', 'hire', 'wire', 'buyer'].some(w => cleanText.includes(w));
+    const hasEngineWord = ['engine', 'engines', 'anchor', 'anchors', 'angel', 'angels', 'inch', 'inches', 'and just', 'run', 'runs', 'agent', 'agents'].some(w => cleanText.includes(w));
+    const shouldPlay = (hasStartWord && hasEngineWord) || startTriggers.some(trigger => cleanText.includes(trigger));
 
     const pauseTriggers = [
       'pause the race', 'pause race', 'pause the simulation', 'pause simulation',
       'pause the sim', 'pause sim', 'stop simulation', 'stop sim', 'stop the race',
       'halt the race', 'halt simulation'
     ];
-    const shouldPause = pauseTriggers.some(trigger => cleanText.includes(trigger));
+    
+    // Broad overlap check for "pause sim" commands
+    const hasPauseWord = ['pause', 'stop', 'halt'].some(w => cleanText.includes(w));
+    const hasSimWord = ['race', 'simulation', 'sim'].some(w => cleanText.includes(w));
+    const shouldPause = (hasPauseWord && hasSimWord) || pauseTriggers.some(trigger => cleanText.includes(trigger));
 
     if (shouldPlay && !isPlayingRef.current) {
       executeDebouncedCommand('sim-play', () => {
