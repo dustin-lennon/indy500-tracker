@@ -52,6 +52,9 @@ interface ControlPanelProps {
   syncSetLap: (lap: number) => void;
   syncOrderPitStop: (driverId: string) => void;
   syncRetireDriver: (driverId: string, reason: string) => void;
+  syncReinstateDriver: (driverId: string) => void;
+  selectedDriverId: string | null;
+  setSelectedDriverId: (id: string | null) => void;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -69,13 +72,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   syncSetLap,
   syncOrderPitStop,
   syncRetireDriver,
+  syncReinstateDriver,
+  selectedDriverId,
+  setSelectedDriverId,
 }) => {
   const [syncLapVal, setSyncLapVal] = useState<number>(lap);
-  const [selectedDriverId, setSelectedDriverId] = useState<string>('');
   const [retireReason, setRetireReason] = useState<string>('Crash Turn 2');
   const [cautionReasonInput, setCautionReasonInput] = useState<string>('');
 
-  const activeDrivers = drivers.filter((d) => d.status === 'running');
+  // Sort dropdown drivers by current standings position
+  const dropdownDrivers = [...drivers].sort((a, b) => a.currentPos - b.currentPos);
+  const selectedDriverObj = drivers.find(d => d.id === selectedDriverId);
+  const isSelectedDriverOut = selectedDriverObj?.status === 'out';
 
   // --- AI AUDIO VOICE SYNC STATE & LOGIC ---
   const [audioSource, setAudioSource] = useState<'mic' | 'tab'>('mic');
@@ -1010,14 +1018,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <label className="stat-label">Incident Controller</label>
               <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                 <select 
-                  value={selectedDriverId} 
-                  onChange={(e) => setSelectedDriverId(e.target.value)}
+                  value={selectedDriverId || ''} 
+                  onChange={(e) => setSelectedDriverId(e.target.value || null)}
                   style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: '#121218', color: '#fff', fontSize: '11px', width: '100%' }}
                 >
                   <option value="">Select Driver...</option>
-                  {activeDrivers.map((d) => (
+                  {dropdownDrivers.map((d) => (
                     <option key={d.id} value={d.id}>
-                      #{d.carNumber} - {d.name.split(' ')[1]}
+                      {d.status === 'out' ? '[OUT] ' : ''}#{d.carNumber} - {d.name.split(' ')[1]}
                     </option>
                   ))}
                 </select>
@@ -1025,24 +1033,36 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
               {selectedDriverId && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
-                  <button className="sync-driver-action pit" onClick={handlePit}>Force Pit Stop</button>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <select 
-                      value={retireReason}
-                      onChange={(e) => setRetireReason(e.target.value)}
-                      style={{ padding: '4px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: '#121218', color: '#fff', fontSize: '10px', flex: 1, minWidth: 0 }}
+                  {isSelectedDriverOut ? (
+                    <button 
+                      type="button"
+                      className="sync-driver-action reinstate" 
+                      onClick={() => syncReinstateDriver(selectedDriverId)}
                     >
-                      <option value="Crash Turn 1">Crash Turn 1</option>
-                      <option value="Crash Turn 2">Crash Turn 2</option>
-                      <option value="Crash Turn 3">Crash Turn 3</option>
-                      <option value="Crash Turn 4">Crash Turn 4</option>
-                      <option value="Crash Front Stretch">Crash Front Wall</option>
-                      <option value="Crash Backstretch">Crash Backstretch</option>
-                      <option value="Engine Blowout">Engine Failure</option>
-                      <option value="Gearbox Failure">Gearbox Failure</option>
-                    </select>
-                    <button className="sync-driver-action retire" onClick={handleRetire}>Retire</button>
-                  </div>
+                      🔄 Reinstate / Return to Race
+                    </button>
+                  ) : (
+                    <>
+                      <button className="sync-driver-action pit" onClick={handlePit}>Force Pit Stop</button>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <select 
+                          value={retireReason}
+                          onChange={(e) => setRetireReason(e.target.value)}
+                          style={{ padding: '4px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', background: '#121218', color: '#fff', fontSize: '10px', flex: 1, minWidth: 0 }}
+                        >
+                          <option value="Crash Turn 1">Crash Turn 1</option>
+                          <option value="Crash Turn 2">Crash Turn 2</option>
+                          <option value="Crash Turn 3">Crash Turn 3</option>
+                          <option value="Crash Turn 4">Crash Turn 4</option>
+                          <option value="Crash Front Stretch">Crash Front Wall</option>
+                          <option value="Crash Backstretch">Crash Backstretch</option>
+                          <option value="Engine Blowout">Engine Failure</option>
+                          <option value="Gearbox Failure">Gearbox Failure</option>
+                        </select>
+                        <button className="sync-driver-action retire" onClick={handleRetire}>Retire</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1360,6 +1380,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           flex: 1;
         }
         .sync-driver-action.retire:hover { background: rgba(255, 23, 68, 0.2); }
+
+        .sync-driver-action.reinstate {
+          background: rgba(76, 175, 80, 0.1);
+          border-color: rgba(76, 175, 80, 0.25);
+          color: #81c784;
+        }
+        .sync-driver-action.reinstate:hover { background: rgba(76, 175, 80, 0.2); }
       `}</style>
     </div>
   );

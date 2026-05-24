@@ -777,6 +777,29 @@ export const useRaceSimulation = () => {
     }));
   }, [addEvent, flag]);
 
+  const syncReinstateDriver = useCallback((driverId: string) => {
+    setDrivers(prev => {
+      const driver = prev.find(d => d.id === driverId);
+      if (!driver || driver.status !== 'out') return prev;
+
+      addEvent('info', `Race Sync: ${driver.name} (Car #${driver.carNumber}) has been reinstated and returned to the race.`, flag);
+
+      return prev.map(d => {
+        if (d.id === driverId) {
+          return {
+            ...d,
+            status: 'running',
+            outReason: undefined,
+            speed: flag === 'yellow' ? 80 : 180,
+            throttle: flag === 'yellow' ? 35 : 80,
+            brake: 0
+          };
+        }
+        return d;
+      });
+    });
+  }, [addEvent, flag]);
+
   const syncMoveDriver = useCallback((driverId: string, direction: 'up' | 'down') => {
     setDrivers(prev => {
       const running = prev.filter(d => d.status !== 'out');
@@ -897,6 +920,7 @@ export const useRaceSimulation = () => {
     syncSetLap,
     syncOrderPitStop,
     syncRetireDriver,
+    syncReinstateDriver,
     syncMoveDriver,
     syncSetDriverPosition
   };

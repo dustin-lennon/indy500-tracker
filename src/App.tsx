@@ -27,6 +27,7 @@ function App() {
     syncSetLap,
     syncOrderPitStop,
     syncRetireDriver,
+    syncReinstateDriver,
     syncMoveDriver,
     syncSetDriverPosition
   } = useRaceSimulation();
@@ -119,6 +120,9 @@ function App() {
                 syncSetLap={syncSetLap}
                 syncOrderPitStop={syncOrderPitStop}
                 syncRetireDriver={syncRetireDriver}
+                syncReinstateDriver={syncReinstateDriver}
+                selectedDriverId={selectedDriverId}
+                setSelectedDriverId={setSelectedDriverId}
               />
               <SpotterLog events={events} />
             </div>
