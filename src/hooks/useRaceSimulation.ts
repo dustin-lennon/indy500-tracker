@@ -43,7 +43,6 @@ export const useRaceSimulation = () => {
   
   // Refs for loop timing and tickers
   const simTimeRef = useRef<number>(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const cautionLapsLeftRef = useRef<number>(0);
   const lastEventLapRef = useRef<number>(0);
   const cautionOrderRef = useRef<string[]>([]); // Saves standing order at caution start
@@ -183,7 +182,7 @@ export const useRaceSimulation = () => {
       }
 
       // ---- SCRIPTED STORY ENGINE ----
-      if (mode === 'scripted' && flag !== 'red') {
+      if (mode === 'scripted') {
         if (leaderLap === 12 && lastEventLapRef.current < 12) {
           lastEventLapRef.current = 12;
           // Pato O'Ward takes the lead
@@ -306,7 +305,7 @@ export const useRaceSimulation = () => {
       }
 
       // 4. Update individual drivers
-      const updatedDrivers = prevDrivers.map((driver, index) => {
+      const updatedDrivers: Driver[] = prevDrivers.map((driver): Driver => {
         // If driver is out, they don't move and speed is 0
         if (driver.status === 'out') {
           return {
@@ -355,7 +354,6 @@ export const useRaceSimulation = () => {
           
           // Bunch up logic
           if (cautionOrderRef.current.length > 0) {
-            const runningDrivers = prevDrivers.filter(d => d.status === 'running');
             const cautionRank = cautionOrderRef.current.indexOf(driver.id);
             
             if (cautionRank === 0) {
@@ -689,11 +687,8 @@ export const useRaceSimulation = () => {
   // Handle Red flag vs Play status
   const togglePlay = () => {
     if (!isPlaying) {
-      if (flag === 'red') {
-        // Resuming from paused grid
-        setFlag(prevFlag);
-      }
       setIsPlaying(true);
+      setFlag(current => (current === 'red' ? prevFlag : current));
     } else {
       setIsPlaying(false);
       setPrevFlag(flag);

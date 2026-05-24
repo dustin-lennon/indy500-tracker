@@ -154,7 +154,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }
 
     // 1. Check Flags
-    if (cleanText.includes('green flag') || cleanText.includes('green green green') || cleanText.includes('back to green') || cleanText.includes('racing again') || cleanText.includes('restart')) {
+    if (cleanText.includes('green') || cleanText.includes('restart') || cleanText.includes('racing again') || cleanText.includes('resumes')) {
       syncSetFlag('green');
       addVoiceEvent('Flag synced to GREEN');
       if (!isPlayingRef.current) {
@@ -162,7 +162,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       }
       return;
     }
-    if (cleanText.includes('yellow flag') || cleanText.includes('caution is out') || cleanText.includes('safety car') || cleanText.includes('pace car') || cleanText.includes('full course yellow')) {
+    if (cleanText.includes('yellow') || cleanText.includes('caution') || cleanText.includes('safety car') || cleanText.includes('pace car') || cleanText.includes('full course yellow') || cleanText.includes('debris') || cleanText.includes('incident') || cleanText.includes('accident')) {
       let reason = 'Caution flag triggered via voice sync';
       if (cleanText.includes('crash') || cleanText.includes('accident') || cleanText.includes('spin')) {
         reason = 'Caution: Incident reported on track';
@@ -176,7 +176,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       }
       return;
     }
-    if (cleanText.includes('red flag') || cleanText.includes('race is stopped') || cleanText.includes('stopped the race')) {
+    if (cleanText.includes('red flag') || (cleanText.includes('red') && cleanText.includes('flag')) || cleanText.includes('race is stopped') || cleanText.includes('stopped the race')) {
       syncSetFlag('red');
       addVoiceEvent('Flag synced to RED');
       if (isPlayingRef.current) {
@@ -184,12 +184,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       }
       return;
     }
-    if (cleanText.includes('white flag') || cleanText.includes('final lap') || cleanText.includes('one lap to go')) {
+    if (cleanText.includes('white') || cleanText.includes('final lap') || cleanText.includes('one lap to go') || cleanText.includes('last lap')) {
       syncSetFlag('white');
       addVoiceEvent('Flag synced to WHITE');
       return;
     }
-    if (cleanText.includes('checkered flag') || cleanText.includes('race is finished') || cleanText.includes('wins the race') || cleanText.includes('winner crossing')) {
+    if (cleanText.includes('checkered') || cleanText.includes('finished') || cleanText.includes('wins the race') || cleanText.includes('winner crossing') || cleanText.includes('takes the win')) {
       syncSetFlag('checkered');
       addVoiceEvent('Flag synced to CHECKERED');
       return;
@@ -239,6 +239,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }
   };
 
+  const processVoiceCommandRef = useRef(processVoiceCommand);
+  useEffect(() => {
+    processVoiceCommandRef.current = processVoiceCommand;
+  }, [processVoiceCommand]);
+
+  const addVoiceEventRef = useRef(addVoiceEvent);
+  useEffect(() => {
+    addVoiceEventRef.current = addVoiceEvent;
+  }, [addVoiceEvent]);
+
   useEffect(() => {
     if (!isVoiceSyncActive) {
       if (recognitionRef.current) {
@@ -251,7 +261,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      addVoiceEvent('Speech recognition not supported in this browser.');
+      addVoiceEventRef.current('Speech recognition not supported in this browser.');
       setIsVoiceSyncActive(false);
       return;
     }
@@ -262,12 +272,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     rec.lang = 'en-US';
 
     rec.onstart = () => {
-      addVoiceEvent('Listening to broadcast audio...');
+      addVoiceEventRef.current('Listening to broadcast audio...');
     };
 
     rec.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
-      addVoiceEvent(`Error: ${event.error}`);
+      addVoiceEventRef.current(`Error: ${event.error}`);
       if (event.error === 'not-allowed') {
         setIsVoiceSyncActive(false);
       }
@@ -279,7 +289,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           rec.start();
         } catch (e) {}
       } else {
-        addVoiceEvent('Voice sync stopped.');
+        addVoiceEventRef.current('Voice sync stopped.');
       }
     };
 
@@ -300,7 +310,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
       if (final) {
         setTranscriptText(final);
-        processVoiceCommand(final);
+        processVoiceCommandRef.current(final);
       }
     };
 
