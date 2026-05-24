@@ -62,7 +62,12 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
   }, []);
 
   // Retrieve coordinate mapping
-  const getCarCoordinates = (distanceIntoLap: number, isPitting: boolean, lateralOffset = 0): Point => {
+  const getCarCoordinates = (
+    distanceIntoLap: number, 
+    isPitting: boolean, 
+    lateralOffset = 0,
+    customPitProgress?: number
+  ): Point => {
     if (pathPoints.length === 0 || pitPoints.length === 0) {
       return { x: 400, y: 310 }; // Default start/finish
     }
@@ -72,6 +77,10 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
     const idx = Math.floor(d * 999);
 
     if (isPitting) {
+      if (customPitProgress !== undefined) {
+        const pitIdx = Math.min(Math.max(Math.floor(customPitProgress * 999), 0), 999);
+        return pitPoints[pitIdx] || { x: 400, y: 310 };
+      }
       // Map distance inside pit lane (pit road entry is roughly 0.90 to 0.15)
       // We map the range [0.90, 1.0] and [0.0, 0.15] into a continuous [0, 1] range for pit lane
       let pitProgress = 0;
@@ -243,7 +252,26 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
           {pathPoints.length > 0 && drivers.map((driver) => {
             if (driver.status === 'out') return null; // Don't draw crashed/retired cars
 
-            const pt = getCarCoordinates(driver.distanceIntoLap, driver.status === 'pitting', driver.lateralOffset);
+            const isPreRace = flag === 'red' && lap === 0 && paceCarDistance === 0.93;
+            const isRedFlag = flag === 'red' && !isPreRace;
+
+            let customPitProgress: number | undefined = undefined;
+            if (isRedFlag) {
+              const sortedRunning = [...drivers]
+                .filter(d => d.status !== 'out')
+                .sort((a, b) => a.currentPos - b.currentPos);
+              const runningIndex = sortedRunning.findIndex(d => d.id === driver.id);
+              if (runningIndex !== -1) {
+                customPitProgress = 0.90 - (runningIndex * 0.025);
+              }
+            }
+
+            const pt = getCarCoordinates(
+              driver.distanceIntoLap, 
+              driver.status === 'pitting' || isRedFlag, 
+              driver.lateralOffset,
+              customPitProgress
+            );
             const isSelected = selectedDriverId === driver.id;
 
             return (

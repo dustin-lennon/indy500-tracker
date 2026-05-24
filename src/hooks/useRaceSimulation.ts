@@ -722,7 +722,7 @@ export const useRaceSimulation = () => {
       cautionLapsLeftRef.current = 0;
       addEvent('green', "GREEN FLAG! Manual restart triggered. Racing resumes!", 'green');
     } else if (newFlag === 'red') {
-      addEvent('red', "RED FLAG! Race is stopped. Cars halted on front stretch.", 'red');
+      addEvent('red', "RED FLAG! Race is stopped. Cars halted in the pit lane.", 'red');
     } else if (newFlag === 'white') {
       addEvent('white', "WHITE FLAG! Manual white flag triggered. Final lap!", 'white');
     } else if (newFlag === 'checkered') {
