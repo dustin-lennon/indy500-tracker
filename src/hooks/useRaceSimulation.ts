@@ -140,6 +140,23 @@ export const useRaceSimulation = () => {
     resetRace();
   }, []);
 
+  // Zero out speeds and telemetry when RED flag is triggered
+  useEffect(() => {
+    if (flag === 'red') {
+      setDrivers(prev => prev.map(d => {
+        if (d.status === 'out') return d;
+        return {
+          ...d,
+          speed: 0,
+          rpm: 0,
+          gear: 1,
+          throttle: 0,
+          brake: 0
+        };
+      }));
+    }
+  }, [flag]);
+
   // Update loop logic (tick occurs every 100ms in real time)
   const tick = useCallback(() => {
     if (flag === 'red') return; // Red flag stops all movement
@@ -653,17 +670,21 @@ export const useRaceSimulation = () => {
     });
   }, [flag, speedMultiplier, mode, lap, events.length, addEvent, paceCarDistance]);
 
+  // Ref to store latest tick to avoid stale closures in interval
+  const tickRef = useRef(tick);
+  useEffect(() => {
+    tickRef.current = tick;
+  }, [tick]);
+
   // Set up loop interval
   useEffect(() => {
     if (isPlaying) {
-      intervalRef.current = setInterval(tick, 100);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      const id = setInterval(() => {
+        tickRef.current();
+      }, 100);
+      return () => clearInterval(id);
     }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isPlaying, tick]);
+  }, [isPlaying]);
 
   // Handle Red flag vs Play status
   const togglePlay = () => {
