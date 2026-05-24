@@ -169,7 +169,20 @@ export const useRaceSimulation = () => {
       // Find current leader's lap to set race lap state
       const currentLeader = [...prevDrivers].sort((a, b) => b.totalDistance - a.totalDistance)[0];
       if (currentLeader && currentLeader.lap !== lap) {
-        setLap(currentLeader.lap);
+        const nextLap = currentLeader.lap;
+        setLap(nextLap);
+
+        // Decrement caution laps when the leader completes a lap under caution
+        if (mode !== 'live' && flag === 'yellow' && cautionLapsLeftRef.current > 0) {
+          cautionLapsLeftRef.current -= 1;
+          if (cautionLapsLeftRef.current === 0) {
+            // Restart!
+            setFlag(nextLap >= 199 ? 'white' : 'green');
+            addEvent('restart', `GREEN FLAG! Race restart on lap ${nextLap}! The green flag is waving.`, 'green');
+          } else {
+            addEvent('info', `Caution Lap ${nextLap}: Safety car leading. ${cautionLapsLeftRef.current} caution laps remaining.`, 'yellow');
+          }
+        }
       }
 
       // Track flag transitions or scripted events based on leader's lap
@@ -524,23 +537,11 @@ export const useRaceSimulation = () => {
           if (distanceIntoLap >= 1.0) {
             distanceIntoLap -= 1.0;
             driverLap += 1;
-            
-            // Release pitting status once exiting pit lane (around Turn 1 entry, 0.15)
-            if (status === 'pitting' && distanceIntoLap >= 0.15) {
-              status = 'running';
-            }
+          }
 
-            // Scripted caution lap decrement
-            if (flag === 'yellow' && cautionLapsLeftRef.current > 0 && driver.id === currentLeader?.id) {
-              cautionLapsLeftRef.current -= 1;
-              if (cautionLapsLeftRef.current === 0) {
-                // Restart!
-                setFlag(driverLap >= 199 ? 'white' : 'green');
-                addEvent('restart', `GREEN FLAG! Race restart on lap ${driverLap}! The green flag is waving.`, 'green');
-              } else {
-                addEvent('info', `Caution Lap ${driverLap}: Safety car leading. ${cautionLapsLeftRef.current} caution laps remaining.`, 'yellow');
-              }
-            }
+          // Release pitting status once exiting pit lane (around Turn 1 entry, 0.15)
+          if (status === 'pitting' && distanceIntoLap >= 0.15 && distanceIntoLap <= 0.50) {
+            status = 'running';
           }
         }
 
