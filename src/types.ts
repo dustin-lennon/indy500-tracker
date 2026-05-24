@@ -40,6 +40,15 @@ export interface Driver {
   };
   telemetryHistory: TelemetryPoint[];
   lateralOffset?: number; // Lateral offset for 3-wide start and racing lines (optional)
+  profile?: {
+    age: number;
+    nationality: string;
+    indy500Wins: number;
+    championships: number;
+    qualifyingSpeed: number; // MPH
+    bio: string;
+    photoUrl?: string;
+  };
   
   // Skill ratings for the simulation engine
   skillRatings: {

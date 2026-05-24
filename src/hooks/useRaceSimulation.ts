@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Driver, RaceEvent, RaceFlag, SimulationMode, TelemetryPoint } from '../types';
 import { INITIAL_DRIVERS } from '../data/initialDrivers';
+import { getDriverProfile } from '../data/driverProfiles';
 
 // Helpers
 const formatTime = (totalSeconds: number): string => {
@@ -23,7 +24,8 @@ export const useRaceSimulation = () => {
         ...d,
         distanceIntoLap: dist,
         totalDistance: dist,
-        lateralOffset: (p === 0) ? -7 : (p === 1) ? 0 : 7 // Inside, Middle, Outside shifts
+        lateralOffset: (p === 0) ? -7 : (p === 1) ? 0 : 7, // Inside, Middle, Outside shifts
+        profile: getDriverProfile(d.id, d.name, d.team, i + 1)
       };
     });
   });
@@ -93,6 +95,7 @@ export const useRaceSimulation = () => {
           distanceIntoLap: dist,
           totalDistance: dist,
           lateralOffset: (p === 0) ? -7 : (p === 1) ? 0 : 7,
+          profile: getDriverProfile(d.id, d.name, d.team, i + 1),
           status: 'running',
           outReason: undefined,
           pitStops: 0,

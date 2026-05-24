@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Driver } from '../types';
 
 interface TelemetryCardProps {
@@ -7,11 +7,17 @@ interface TelemetryCardProps {
 
 export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [activeTab, setActiveTab] = useState<'telemetry' | 'profile'>('telemetry');
+
+  // Reset tab to telemetry when driver changes
+  useEffect(() => {
+    setActiveTab('telemetry');
+  }, [driver?.id]);
 
   // Draw the real-time canvas chart
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !driver || driver.telemetryHistory.length === 0) return;
+    if (!canvas || !driver || activeTab !== 'telemetry' || driver.telemetryHistory.length === 0) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -90,7 +96,7 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
     
     // Reset shadow for subsequent draws
     ctx.shadowBlur = 0;
-  }, [driver]);
+  }, [driver, activeTab]);
 
   if (!driver) {
     return (
@@ -114,10 +120,13 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
 
   const avgTireWear = Math.round((driver.tireWear.lf + driver.tireWear.rf + driver.tireWear.lr + driver.tireWear.rr) / 4);
 
+  // Map raw baseSpeed to a realistic 0-100 Speed Rating
+  const calculatedSpeedRating = Math.round(((driver.skillRatings.baseSpeed - 1.0) / 0.03) * 100);
+
   return (
-    <div className="telemetry-card glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, minWidth: 0 }}>
+    <div className="telemetry-card glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minWidth: 0 }}>
       {/* Header Info */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="car-badge" style={{ backgroundColor: driver.carColor }}>{driver.carNumber}</span>
@@ -133,134 +142,254 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
         </div>
       </div>
 
-      {/* Main Telemetry Panel */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '16px', flex: 1 }}>
-        {/* Speed, Gear, RPM */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRight: '1px solid rgba(255,255,255,0.04)', paddingRight: '12px' }}>
-          <div>
-            <label className="stat-label">Live Telemetry</label>
-            <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '6px' }}>
-              <span className="speed-val font-mono" style={{ fontSize: '36px', fontWeight: '800', color: '#fff', letterSpacing: '-1px' }}>
-                {driver.speed}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '4px', fontWeight: '700' }}>MPH</span>
+      {/* Tabs Menu */}
+      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
+        <button 
+          className={`tab-select-btn ${activeTab === 'telemetry' ? 'active' : ''}`}
+          onClick={() => setActiveTab('telemetry')}
+        >
+          📊 Live Telemetry
+        </button>
+        <button 
+          className={`tab-select-btn ${activeTab === 'profile' ? 'active' : ''}`}
+          onClick={() => setActiveTab('profile')}
+        >
+          👤 Driver Profile
+        </button>
+      </div>
+
+      {/* Conditional Content */}
+      {activeTab === 'telemetry' ? (
+        /* TELEMETRY VIEW */
+        <div className="tab-view-grid fade-in" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '16px', flex: 1 }}>
+          {/* Speed, Gear, RPM */}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRight: '1px solid rgba(255,255,255,0.04)', paddingRight: '12px' }}>
+            <div>
+              <label className="stat-label">Live Telemetry</label>
+              <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '6px' }}>
+                <span className="speed-val font-mono" style={{ fontSize: '36px', fontWeight: '800', color: '#fff', letterSpacing: '-1px' }}>
+                  {driver.speed}
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '4px', fontWeight: '700' }}>MPH</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+              <div className="gear-indicator font-mono">
+                {driver.speed === 0 ? 'N' : driver.gear}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                  <span>Tachometer</span>
+                  <span className="font-mono">{driver.rpm} RPM</span>
+                </div>
+                <div className="rpm-bar-container">
+                  <div 
+                    className={`rpm-bar ${driver.rpm > 10500 ? 'redline' : ''}`} 
+                    style={{ width: `${(driver.rpm / 12000) * 100}%` }} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Throttle & Brake Visualizers */}
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                  <span>THR</span>
+                  <span>{driver.throttle}%</span>
+                </div>
+                <div className="pedal-bar-container">
+                  <div className="pedal-bar throttle" style={{ width: `${driver.throttle}%` }} />
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                  <span>BRK</span>
+                  <span>{driver.brake}%</span>
+                </div>
+                <div className="pedal-bar-container">
+                  <div className="pedal-bar brake" style={{ width: `${driver.brake}%` }} />
+                </div>
+              </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-            <div className="gear-indicator font-mono">
-              {driver.speed === 0 ? 'N' : driver.gear}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
-                <span>Tachometer</span>
-                <span className="font-mono">{driver.rpm} RPM</span>
+          {/* Tire Wear (Bird's Eye Car layout) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '1px solid rgba(255,255,255,0.04)', paddingRight: '8px' }}>
+            <label className="stat-label" style={{ alignSelf: 'flex-start', marginBottom: '8px' }}>Tire Status</label>
+            <div className="tyre-grid-container">
+              {/* Front Tires */}
+              <div className="tyre-row">
+                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.lf) }}>
+                  <span className="tyre-label">LF</span>
+                  <span className="tyre-pct font-mono">{driver.tireWear.lf}%</span>
+                </div>
+                <div className="car-chassis-top" />
+                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.rf) }}>
+                  <span className="tyre-label">RF</span>
+                  <span className="tyre-pct font-mono">{driver.tireWear.rf}%</span>
+                </div>
               </div>
-              <div className="rpm-bar-container">
+
+              {/* Car body */}
+              <div className="car-body-center">
+                <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Avg {avgTireWear}%</span>
+              </div>
+
+              {/* Rear Tires */}
+              <div className="tyre-row">
+                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.lr) }}>
+                  <span className="tyre-label">LR</span>
+                  <span className="tyre-pct font-mono">{driver.tireWear.lr}%</span>
+                </div>
+                <div className="car-chassis-bot" />
+                <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.rr) }}>
+                  <span className="tyre-label">RR</span>
+                  <span className="tyre-pct font-mono">{driver.tireWear.rr}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Fuel & Real-Time Oscillo Chart */}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+            {/* Fuel Level */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label className="stat-label">Ethanol Fuel</label>
+                <span className="font-mono" style={{ fontSize: '12px', fontWeight: '700', color: getFuelColor(driver.fuel) }}>{driver.fuel}%</span>
+              </div>
+              <div className="fuel-bar-container">
                 <div 
-                  className={`rpm-bar ${driver.rpm > 10500 ? 'redline' : ''}`} 
-                  style={{ width: `${(driver.rpm / 12000) * 100}%` }} 
+                  className="fuel-bar" 
+                  style={{ 
+                    width: `${driver.fuel}%`, 
+                    backgroundColor: getFuelColor(driver.fuel),
+                    boxShadow: `0 0 8px ${getFuelColor(driver.fuel)}44` 
+                  }} 
                 />
               </div>
             </div>
-          </div>
 
-          {/* Throttle & Brake Visualizers */}
-          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>
-                <span>THR</span>
-                <span>{driver.throttle}%</span>
+            {/* Real-time Telemetry Canvas */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginTop: '8px', minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '3px' }}>
+                <span>Live Waveform</span>
+                <span style={{ display: 'flex', gap: '8px' }}>
+                  <span style={{ color: 'var(--cyan-accent)' }}>● Spd</span>
+                  <span style={{ color: 'var(--flag-green)' }}>● Thr</span>
+                  <span style={{ color: 'var(--flag-red)' }}>● Brk</span>
+                </span>
               </div>
-              <div className="pedal-bar-container">
-                <div className="pedal-bar throttle" style={{ width: `${driver.throttle}%` }} />
-              </div>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '2px' }}>
-                <span>BRK</span>
-                <span>{driver.brake}%</span>
-              </div>
-              <div className="pedal-bar-container">
-                <div className="pedal-bar brake" style={{ width: `${driver.brake}%` }} />
+              <div style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '4px', overflow: 'hidden' }}>
+                <canvas ref={canvasRef} width="160" height="65" style={{ width: '100%', height: '100%', display: 'block' }} />
               </div>
             </div>
           </div>
         </div>
-
-        {/* Tire Wear (Bird's Eye Car layout) */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '1px solid rgba(255,255,255,0.04)', paddingRight: '8px' }}>
-          <label className="stat-label" style={{ alignSelf: 'flex-start', marginBottom: '8px' }}>Tire Status</label>
-          <div className="tyre-grid-container">
-            {/* Front Tires */}
-            <div className="tyre-row">
-              <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.lf) }}>
-                <span className="tyre-label">LF</span>
-                <span className="tyre-pct font-mono">{driver.tireWear.lf}%</span>
-              </div>
-              <div className="car-chassis-top" />
-              <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.rf) }}>
-                <span className="tyre-label">RF</span>
-                <span className="tyre-pct font-mono">{driver.tireWear.rf}%</span>
-              </div>
-            </div>
-
-            {/* Car body */}
-            <div className="car-body-center">
-              <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Avg {avgTireWear}%</span>
-            </div>
-
-            {/* Rear Tires */}
-            <div className="tyre-row">
-              <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.lr) }}>
-                <span className="tyre-label">LR</span>
-                <span className="tyre-pct font-mono">{driver.tireWear.lr}%</span>
-              </div>
-              <div className="car-chassis-bot" />
-              <div className="tyre-box" style={{ borderColor: getTireWearColor(driver.tireWear.rr) }}>
-                <span className="tyre-label">RR</span>
-                <span className="tyre-pct font-mono">{driver.tireWear.rr}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Fuel & Real-Time Oscillo Chart */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
-          {/* Fuel Level */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label className="stat-label">Ethanol Fuel</label>
-              <span className="font-mono" style={{ fontSize: '12px', fontWeight: '700', color: getFuelColor(driver.fuel) }}>{driver.fuel}%</span>
-            </div>
-            <div className="fuel-bar-container">
-              <div 
-                className="fuel-bar" 
-                style={{ 
-                  width: `${driver.fuel}%`, 
-                  backgroundColor: getFuelColor(driver.fuel),
-                  boxShadow: `0 0 8px ${getFuelColor(driver.fuel)}44` 
-                }} 
-              />
-            </div>
-          </div>
-
-          {/* Real-time Telemetry Canvas */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginTop: '10px', minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '3px' }}>
-              <span>Live Waveform</span>
-              <span style={{ display: 'flex', gap: '8px' }}>
-                <span style={{ color: 'var(--cyan-accent)' }}>● Speed</span>
-                <span style={{ color: 'var(--flag-green)' }}>● Thr</span>
-                <span style={{ color: 'var(--flag-red)' }}>● Brk</span>
+      ) : (
+        /* DRIVER PROFILE VIEW */
+        <div className="profile-tab-content fade-in" style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr', gap: '16px', flex: 1 }}>
+          {/* Left Side: Stats block */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderRight: '1px solid rgba(255,255,255,0.04)', paddingRight: '16px' }}>
+            <label className="stat-label">Driver Stats</label>
+            
+            <div className="profile-stat-row">
+              <span className="profile-stat-lbl">Nationality</span>
+              <span className="profile-stat-val" style={{ fontWeight: '700' }}>
+                {driver.profile?.nationality === 'USA' ? '🇺🇸 USA' :
+                 driver.profile?.nationality === 'Spain' ? '🇪🇸 Spain' :
+                 driver.profile?.nationality === 'Mexico' ? '🇲🇽 Mexico' :
+                 driver.profile?.nationality === 'New Zealand' ? '🇳🇿 New Zealand' :
+                 driver.profile?.nationality === 'Brazil' ? '🇧🇷 Brazil' :
+                 driver.profile?.nationality === 'Sweden' ? '🇸🇪 Sweden' :
+                 driver.profile?.nationality === 'Denmark' ? '🇩🇰 Denmark' :
+                 driver.profile?.nationality === 'Germany' ? '🇩🇪 Germany' :
+                 driver.profile?.nationality === 'France' ? '🇫🇷 France' :
+                 driver.profile?.nationality === 'United Kingdom' ? '🇬🇧 UK' :
+                 driver.profile?.nationality === 'Netherlands' ? '🇳🇱 Netherlands' :
+                 driver.profile?.nationality === 'Australia' ? '🇦🇺 Australia' :
+                 driver.profile?.nationality || '🏁'}
               </span>
             </div>
-            <div style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '4px', overflow: 'hidden' }}>
-              <canvas ref={canvasRef} width="160" height="65" style={{ width: '100%', height: '100%', display: 'block' }} />
+
+            <div className="profile-stat-row">
+              <span className="profile-stat-lbl">Age</span>
+              <span className="profile-stat-val font-mono">{driver.profile?.age || '--'}</span>
+            </div>
+
+            <div className="profile-stat-row">
+              <span className="profile-stat-lbl">Indy 500 Wins</span>
+              <span className="profile-stat-val font-mono" style={{ color: driver.profile?.indy500Wins ? 'var(--flag-yellow)' : 'var(--text-muted)', fontWeight: '700' }}>
+                {driver.profile?.indy500Wins ? `${driver.profile.indy500Wins} 🏆` : '0'}
+              </span>
+            </div>
+
+            <div className="profile-stat-row">
+              <span className="profile-stat-lbl">Astor Cups</span>
+              <span className="profile-stat-val font-mono" style={{ fontWeight: '700' }}>
+                {driver.profile?.championships || '0'}
+              </span>
+            </div>
+
+            <div className="profile-stat-row" style={{ borderBottom: 'none' }}>
+              <span className="profile-stat-lbl">Qualy Speed</span>
+              <span className="profile-stat-val font-mono" style={{ color: 'var(--cyan-accent)', fontWeight: '700' }}>
+                {driver.profile?.qualifyingSpeed.toFixed(3) || '0.000'} MPH
+              </span>
+            </div>
+          </div>
+
+          {/* Right Side: Bio & Performance Ratings */}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px', minWidth: 0 }}>
+            <div>
+              <label className="stat-label">Driver Biography</label>
+              <p className="profile-bio-text">
+                "{driver.profile?.bio}"
+              </p>
+            </div>
+
+            {/* Performance Bars */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label className="stat-label">Simulator Profile</label>
+              
+              {/* Speed bar */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-secondary)', marginBottom: '1px' }}>
+                  <span>Raw Speed</span>
+                  <span className="font-mono">{calculatedSpeedRating} / 100</span>
+                </div>
+                <div className="skill-track">
+                  <div className="skill-fill speed" style={{ width: `${Math.max(calculatedSpeedRating, 25)}%` }} />
+                </div>
+              </div>
+
+              {/* Consistency bar */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-secondary)', marginBottom: '1px' }}>
+                  <span>Consistency</span>
+                  <span className="font-mono">{driver.skillRatings.consistency} / 100</span>
+                </div>
+                <div className="skill-track">
+                  <div className="skill-fill consistency" style={{ width: `${driver.skillRatings.consistency}%` }} />
+                </div>
+              </div>
+
+              {/* Safety bar */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-secondary)', marginBottom: '1px' }}>
+                  <span>Safety / Avoidance</span>
+                  <span className="font-mono">{driver.skillRatings.accidentAvoidance} / 100</span>
+                </div>
+                <div className="skill-track">
+                  <div className="skill-fill safety" style={{ width: `${driver.skillRatings.accidentAvoidance}%` }} />
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <style>{`
         .status-tag {
@@ -288,6 +417,28 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
           border: 1px solid rgba(255, 23, 68, 0.3);
         }
         
+        .tab-select-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          font-size: 11px;
+          font-weight: 700;
+          padding: 6px 12px 4px 12px;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          transition: all var(--transition-fast);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .tab-select-btn:hover {
+          color: var(--text-primary);
+        }
+        .tab-select-btn.active {
+          color: var(--cyan-accent);
+          border-bottom-color: var(--cyan-accent);
+          text-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+        }
+
         .gear-indicator {
           font-size: 26px;
           font-weight: 800;
@@ -416,6 +567,59 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
           height: 100%;
           border-radius: 3px;
           transition: width 0.2s ease;
+        }
+
+        /* Profile styling */
+        .profile-stat-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 6px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.03);
+          font-size: 12px;
+        }
+        .profile-stat-lbl {
+          color: var(--text-secondary);
+        }
+        .profile-stat-val {
+          color: #fff;
+        }
+        
+        .profile-bio-text {
+          font-size: 11.5px;
+          color: var(--text-secondary);
+          line-height: 1.45;
+          margin-top: 4px;
+          font-style: italic;
+          background: rgba(0,0,0,0.15);
+          padding: 8px 12px;
+          border-radius: 4px;
+          border: 1px solid rgba(255,255,255,0.02);
+          max-height: 70px;
+          overflow-y: auto;
+        }
+        
+        .skill-track {
+          height: 5px;
+          background: rgba(255,255,255,0.05);
+          border-radius: 3px;
+          overflow: hidden;
+          width: 100%;
+        }
+        .skill-fill {
+          height: 100%;
+          border-radius: 3px;
+        }
+        .skill-fill.speed {
+          background: var(--cyan-accent);
+          box-shadow: 0 0 6px var(--cyan-accent);
+        }
+        .skill-fill.consistency {
+          background: var(--flag-green);
+          box-shadow: 0 0 6px var(--flag-green);
+        }
+        .skill-fill.safety {
+          background: #ff8f00;
+          box-shadow: 0 0 6px #ff8f00;
         }
       `}</style>
     </div>
