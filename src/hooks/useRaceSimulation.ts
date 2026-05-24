@@ -898,10 +898,38 @@ export const useRaceSimulation = () => {
     });
   }, []);
 
-  const syncSetBulkPositions = useCallback((orderedCarNumbers: string[]) => {
+  const syncSetBulkPositions = useCallback((orderedCarNumbers: string[], retiredCarNumbers: string[] = []) => {
     setDrivers(prev => {
-      const running = prev.filter(d => d.status !== 'out');
-      const retired = prev.filter(d => d.status === 'out');
+      // 1. Map and update running/retired statuses first
+      const updatedStatusDrivers = prev.map(d => {
+        const isRetiredInFeed = retiredCarNumbers.includes(d.carNumber);
+        const isRunningInFeed = orderedCarNumbers.includes(d.carNumber);
+        
+        if (isRetiredInFeed && d.status === 'running') {
+          return {
+            ...d,
+            status: 'out' as const,
+            outReason: 'Retired (via Live Standings)',
+            speed: 0,
+            throttle: 0,
+            brake: 0
+          };
+        } else if (isRunningInFeed && d.status === 'out') {
+          return {
+            ...d,
+            status: 'running' as const,
+            outReason: undefined,
+            speed: flag === 'yellow' ? 80 : 180,
+            throttle: flag === 'yellow' ? 35 : 80,
+            brake: 0
+          };
+        }
+        return d;
+      });
+
+      // 2. Separate into running and retired sets
+      const running = updatedStatusDrivers.filter(d => d.status !== 'out');
+      const retired = updatedStatusDrivers.filter(d => d.status === 'out');
       
       const reorderedRunning: Driver[] = [];
       const seenIds = new Set<string>();
@@ -932,10 +960,26 @@ export const useRaceSimulation = () => {
         };
       });
 
-      const merged = [...updatedRunning, ...retired];
+      // Sort retired drivers to place them at the bottom in the order they appear in retiredCarNumbers if possible
+      const orderedRetired: Driver[] = [];
+      const seenRetiredIds = new Set<string>();
+      
+      retiredCarNumbers.forEach(carNum => {
+        const trimmed = carNum.trim();
+        const matches = retired.filter(d => d.carNumber === trimmed);
+        const match = matches.find(d => !seenRetiredIds.has(d.id));
+        if (match) {
+          orderedRetired.push(match);
+          seenRetiredIds.add(match.id);
+        }
+      });
+      
+      const remainingRetired = retired.filter(d => !seenRetiredIds.has(d.id));
+      const allRetired = [...orderedRetired, ...remainingRetired];
+
+      const merged = [...updatedRunning, ...allRetired];
 
       return merged.map((d, idx) => {
-        if (d.status === 'out') return d;
         const newPos = idx + 1;
         return {
           ...d,
@@ -945,7 +989,7 @@ export const useRaceSimulation = () => {
       });
     });
 
-    addEvent('info', 'Race Sync: Leaderboard standings updated via bulk input.', flag);
+    addEvent('info', 'Race Sync: Leaderboard standings and retirements updated via live feed.', flag);
   }, [addEvent, flag]);
 
   return {

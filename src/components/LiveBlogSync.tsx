@@ -8,7 +8,7 @@ interface LiveBlogSyncProps {
   syncSetLap: (lap: number) => void;
   syncOrderPitStop: (driverId: string) => void;
   syncRetireDriver: (driverId: string, reason: string) => void;
-  syncSetBulkPositions: (orderedCarNumbers: string[]) => void;
+  syncSetBulkPositions: (orderedCarNumbers: string[], retiredCarNumbers?: string[]) => void;
 }
 
 interface BlogPost {
@@ -22,6 +22,7 @@ interface RacetraxDriver {
   rank: number;
   name: string;
   carNumber: string;
+  isOut: boolean;
   matchedLocalDriver?: Driver;
 }
 
@@ -277,9 +278,11 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
       const parsed: RacetraxDriver[] = rows.map((r: any) => {
         const columns = r.columns || [];
         const rank = parseInt(columns[0]?.text || '0', 10);
-        const name = columns[1]?.imageAltText || columns[1]?.text || 'Unknown';
+        const rawName = columns[1]?.imageAltText || columns[1]?.text || 'Unknown';
+        const name = rawName === 'Default Headshot' ? (columns[1]?.text || rawName) : rawName;
         const carStr = columns[1]?.superscript || ''; // e.g. "#4"
         const carNumber = carStr.replace('#', '').trim();
+        const isOut = r.indicatorColor === '1, 51, 51, 51';
         
         // Find local driver match by last name
         const cleanName = name.toLowerCase().replace(/[^a-z\s]/g, ' ');
@@ -294,6 +297,7 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
           rank,
           name,
           carNumber,
+          isOut,
           matchedLocalDriver
         };
       });
@@ -302,13 +306,19 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
 
       // Auto-Sync logic
       if (isAutoRacetraxSync && parsed.length > 0) {
-        const carNumbersToSync = parsed
+        const runningCarNumbers = parsed
+          .filter(p => !p.isOut)
           .map(p => p.matchedLocalDriver?.carNumber)
           .filter(Boolean) as string[];
           
-        if (carNumbersToSync.length > 0) {
-          syncSetBulkPositions(carNumbersToSync);
-          addLog(`Auto-Synced standings from FOX Racetrax (${carNumbersToSync.length} cars positioned).`);
+        const retiredCarNumbers = parsed
+          .filter(p => p.isOut)
+          .map(p => p.matchedLocalDriver?.carNumber)
+          .filter(Boolean) as string[];
+          
+        if (runningCarNumbers.length > 0 || retiredCarNumbers.length > 0) {
+          syncSetBulkPositions(runningCarNumbers, retiredCarNumbers);
+          addLog(`Auto-Synced standings from FOX Racetrax (${runningCarNumbers.length} running, ${retiredCarNumbers.length} retired).`);
         }
       }
 
@@ -323,13 +333,19 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
   // ---- MANUAL BULK STANDINGS APPLY ----
   const handleApplyRacetraxStandings = () => {
     if (racetraxStandings.length === 0) return;
-    const carNumbersToSync = racetraxStandings
+    const runningCarNumbers = racetraxStandings
+      .filter(p => !p.isOut)
       .map(p => p.matchedLocalDriver?.carNumber)
       .filter(Boolean) as string[];
       
-    if (carNumbersToSync.length > 0) {
-      syncSetBulkPositions(carNumbersToSync);
-      addLog(`Manually Synced FOX Racetrax Standings (${carNumbersToSync.length} cars positioned).`);
+    const retiredCarNumbers = racetraxStandings
+      .filter(p => p.isOut)
+      .map(p => p.matchedLocalDriver?.carNumber)
+      .filter(Boolean) as string[];
+      
+    if (runningCarNumbers.length > 0 || retiredCarNumbers.length > 0) {
+      syncSetBulkPositions(runningCarNumbers, retiredCarNumbers);
+      addLog(`Manually Synced FOX Racetrax Standings (${runningCarNumbers.length} running, ${retiredCarNumbers.length} retired).`);
     } else {
       addLog(`No matching local drivers detected to sync standings.`);
     }
@@ -595,6 +611,11 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {driver.isOut && (
+                        <span style={{ fontSize: '8px', color: '#ff8a80', background: 'rgba(255, 23, 68, 0.12)', border: '1px solid rgba(255, 23, 68, 0.25)', padding: '1.5px 5px', borderRadius: '3px', fontWeight: '800' }}>
+                          OUT
+                        </span>
+                      )}
                       {isMatched ? (
                         <span style={{ fontSize: '9px', color: '#a5d6a7', background: 'rgba(76, 175, 80, 0.08)', padding: '1.5px 5px', borderRadius: '3px', fontWeight: '700' }}>
                           ✓ Matched
