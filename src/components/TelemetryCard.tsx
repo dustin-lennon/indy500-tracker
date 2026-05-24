@@ -17,7 +17,7 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
   // Draw the real-time canvas chart
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !driver || activeTab !== 'telemetry' || driver.telemetryHistory.length === 0) return;
+    if (!canvas || !driver || activeTab !== 'telemetry') return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -47,6 +47,8 @@ export const TelemetryCard: React.FC<TelemetryCardProps> = ({ driver }) => {
       ctx.lineTo(x, height);
       ctx.stroke();
     }
+
+    if (driver.telemetryHistory.length === 0) return;
 
     const history = driver.telemetryHistory;
     const maxPoints = 60; // Represents last 6 seconds of data

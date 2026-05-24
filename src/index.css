@@ -209,6 +209,7 @@ h1, h2, h3, h4 {
   gap: 16px;
   min-height: 280px;
   height: auto;
+  align-items: start;
 }
 
 @media (max-width: 900px) {
