@@ -304,7 +304,8 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
       }
 
       const unpacked = resolve(2);
-      const pageData = unpacked['options:asyncdata:event-page'];
+      const rootObj = Array.isArray(unpacked) ? unpacked[1] : unpacked;
+      const pageData = rootObj ? rootObj['options:asyncdata:event-page'] : undefined;
       if (!pageData || !pageData.tabContent || !pageData.tabContent.event || !pageData.tabContent.event.leaderboard) {
         throw new Error('Nuxt data structure does not contain expected event or leaderboard elements.');
       }
@@ -634,7 +635,7 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
                         {driver.name}
                       </span>
                       <span style={{ fontSize: '9px', color: 'var(--cyan-accent)', background: 'rgba(0, 229, 255, 0.08)', padding: '1px 4px', borderRadius: '3px', fontFamily: 'var(--font-mono)' }}>
-                        #{driver.carNumber}
+                        #{driver.carNumber || driver.matchedLocalDriver?.carNumber || '??'}
                       </span>
                     </div>
 
