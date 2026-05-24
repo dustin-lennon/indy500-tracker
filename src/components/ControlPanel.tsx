@@ -1,6 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { RaceFlag, SimulationMode, Driver } from '../types';
 
+const DRIVER_VOICE_VARIANTS: Record<string, string[]> = {
+  '1': ['palou', 'pah lou', 'pilou', 'blue', 'plow', 'palo'],
+  '2': ['rossi', 'rosy', 'rossy'],
+  '3': ['malukas', 'maloukas', 'luca', 'lucas'],
+  '4': ['rosenqvist', 'rosenquist', 'rosen'],
+  '5': ['ferrucci', 'ferruchi', 'santino'],
+  '6': ['o\'ward', 'oward', 'o ward', 'award', 'howard', 'pato'],
+  '7': ['simpson', 'kyffin'],
+  '8': ['daly', 'daily', 'dailey', 'conor'],
+  '9': ['mclaughlin', 'maclaughlin', 'mcloughlin', 'mclaughlen'],
+  '10': ['dixon', 'dickson', 'nixon'],
+  '11': ['veekay', 'v kay', 'vkey', 'rinus'],
+  '12': ['sato', 'satto', 'saddo', 'takuma'],
+  '13': ['carpenter'],
+  '14': ['castroneves', 'castronevis', 'helio'],
+  '15': ['rasmussen'],
+  '16': ['armstrong'],
+  '17': ['ericsson', 'ericson', 'ericssen'],
+  '18': ['lundgaard', 'lundgard', 'lungard'],
+  '19': ['power', 'bower'],
+  '20': ['siegel', 'seigel', 'segal'],
+  '21': ['foster'],
+  '22': ['hunter-reay', 'hunter reay', 'hunter'],
+  '23': ['newgarden', 'new garden', 'guardian'],
+  '24': ['grosjean', 'grojean', 'gros jean'],
+  '25': ['schumacher', 'shoemaker'],
+  '26': ['herta', 'hurta', 'hurter'],
+  '27': ['kirkwood'],
+  '28': ['rahal', 'rayhal', 'rahall'],
+  '29': ['fittipaldi'],
+  '30': ['robb', 'sting ray', 'stingray'],
+  '31': ['legge', 'leg'],
+  '32': ['collet', 'colet', 'caio'],
+  '33': ['harvey']
+};
+
 interface ControlPanelProps {
   flag: RaceFlag;
   lap: number;
@@ -42,12 +78,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const activeDrivers = drivers.filter((d) => d.status === 'running');
 
   // --- AI AUDIO VOICE SYNC STATE & LOGIC ---
+  const [audioSource, setAudioSource] = useState<'mic' | 'tab'>('mic');
+  const [enableFilter, setEnableFilter] = useState<boolean>(true);
   const [isVoiceSyncActive, setIsVoiceSyncActive] = useState<boolean>(false);
   const [voiceLog, setVoiceLog] = useState<{ time: string; msg: string }[]>([]);
   const [transcriptText, setTranscriptText] = useState<string>('');
   const [showSetupGuide, setShowSetupGuide] = useState<boolean>(false);
+  
   const recognitionRef = useRef<any>(null);
   const lastExecutedCommandsRef = useRef<Record<string, number>>({});
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const restartTimeoutRef = useRef<any>(null);
+  const audioTrackRef = useRef<MediaStreamTrack | null>(null);
+  const visualizerRef = useRef<HTMLDivElement>(null);
 
   const isVoiceSyncActiveRef = useRef(isVoiceSyncActive);
   useEffect(() => {
@@ -168,8 +214,53 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       return;
     }
 
+    // Phonetic Flag Triggers
+    const greenTriggers = [
+      'green flag', 'grain flag', 'grim flag', 'dream flag', 'glen flag', 'queen flag', 'cream flag', 'greene flag',
+      'flag is green', 'flag is grain', 'flag is grim', 'flag is dream',
+      'racing again', 'resumes', 'restart', 're-start', 'restructured',
+      'green light', 'grain light', 'dream light',
+      'green is out', 'grain is out', 'dream is out'
+    ];
+
+    const yellowTriggers = [
+      'yellow flag', 'yeller flag', 'hello flag', 'fellow flag', 'shallow flag', 'jello flag',
+      'flag is yellow', 'flag is yeller', 'flag is hello',
+      'caution is out', 'cautious is out', 'costume is out', 'cosmic is out', 'coughing is out', 'cushion is out', 'collision is out', 'condition is out',
+      'under caution', 'under cautious', 'under costume', 'under cosmic', 'under coughing', 'under cushion', 'under collision',
+      'safety car', 'safety cap', 'shady car', 'salty car',
+      'pace car', 'base car', 'face car', 'place car', 'space car', 'pay scale', 'pay scar', 'pay car',
+      'full course yellow', 'full course caution',
+      'debris on track', 'debrief on track', 'degrees on track', 'the breeze on track',
+      'incident', 'accident', 'spin', 'crashed', 'spun'
+    ];
+
+    const redTriggers = [
+      'red flag', 'read flag', 'head flag', 'led flag', 'bed flag', 'dead flag', 'rad flag', 'rid flag',
+      'flag is red', 'flag is read', 'flag is head', 'flag is led',
+      'race is stopped', 'race is halted', 'stopped the race'
+    ];
+
+    const whiteTriggers = [
+      'white flag', 'wipe flag', 'wide flag', 'light flag', 'right flag', 'quite flag',
+      'flag is white', 'flag is wipe', 'flag is wide',
+      'final lap', 'one lap to go', 'last lap'
+    ];
+
+    const checkeredTriggers = [
+      'checkered flag', 'chequered flag', 'checker flag', 'checkers flag', 'chicken flag', 'checking flag',
+      'flag is checkered', 'flag is chequered',
+      'wins the race', 'takes the win', 'winner crossing', 'takes the checkered'
+    ];
+
+    const hasGreen = cleanText.includes('green') || greenTriggers.some(t => cleanText.includes(t));
+    const hasYellow = cleanText.includes('yellow') || cleanText.includes('caution') || yellowTriggers.some(t => cleanText.includes(t));
+    const hasRed = cleanText.includes('red flag') || (cleanText.includes('red') && cleanText.includes('flag')) || redTriggers.some(t => cleanText.includes(t));
+    const hasWhite = cleanText.includes('white') || whiteTriggers.some(t => cleanText.includes(t));
+    const hasCheckered = cleanText.includes('checkered') || cleanText.includes('chequered') || checkeredTriggers.some(t => cleanText.includes(t));
+
     // 1. Check Flags
-    if (cleanText.includes('green') || cleanText.includes('restart') || cleanText.includes('racing again') || cleanText.includes('resumes')) {
+    if (hasGreen) {
       executeDebouncedCommand('flag-green', () => {
         syncSetFlag('green');
         addVoiceEvent('Flag synced to GREEN');
@@ -179,11 +270,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       });
       return;
     }
-    if (cleanText.includes('yellow') || cleanText.includes('caution') || cleanText.includes('safety car') || cleanText.includes('pace car') || cleanText.includes('full course yellow') || cleanText.includes('debris') || cleanText.includes('incident') || cleanText.includes('accident')) {
+    if (hasYellow) {
       let reason = 'Caution flag triggered via voice sync';
-      if (cleanText.includes('crash') || cleanText.includes('accident') || cleanText.includes('spin')) {
+      if (cleanText.includes('crash') || cleanText.includes('accident') || cleanText.includes('spin') || cleanText.includes('incident')) {
         reason = 'Caution: Incident reported on track';
-      } else if (cleanText.includes('debris')) {
+      } else if (cleanText.includes('debris') || cleanText.includes('breeze') || cleanText.includes('debrief')) {
         reason = 'Caution: Debris reported on track';
       }
       const r = reason;
@@ -196,7 +287,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       });
       return;
     }
-    if (cleanText.includes('red flag') || (cleanText.includes('red') && cleanText.includes('flag')) || cleanText.includes('race is stopped') || cleanText.includes('stopped the race')) {
+    if (hasRed) {
       executeDebouncedCommand('flag-red', () => {
         syncSetFlag('red');
         addVoiceEvent('Flag synced to RED');
@@ -206,14 +297,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       });
       return;
     }
-    if (cleanText.includes('white') || cleanText.includes('final lap') || cleanText.includes('one lap to go') || cleanText.includes('last lap')) {
+    if (hasWhite) {
       executeDebouncedCommand('flag-white', () => {
         syncSetFlag('white');
         addVoiceEvent('Flag synced to WHITE');
       });
       return;
     }
-    if (cleanText.includes('checkered') || cleanText.includes('finished') || cleanText.includes('wins the race') || cleanText.includes('winner crossing') || cleanText.includes('takes the win')) {
+    if (hasCheckered) {
       executeDebouncedCommand('flag-checkered', () => {
         syncSetFlag('checkered');
         addVoiceEvent('Flag synced to CHECKERED');
@@ -237,13 +328,19 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       const fullName = d.name.toLowerCase();
       const carNum = d.carNumber;
       
-      const nameMentioned = cleanText.includes(lastName) || cleanText.includes(fullName);
+      const customVariants = DRIVER_VOICE_VARIANTS[d.id] || [];
+      const nameMentioned = cleanText.includes(lastName) || 
+                            cleanText.includes(fullName) || 
+                            customVariants.some(v => cleanText.includes(v));
       const carMentionRegex = new RegExp(`\\b(car|number)\\s+${carNum}\\b`);
       const carMentioned = carMentionRegex.test(cleanText);
       
       if (nameMentioned || carMentioned) {
-        const pitWords = ['pit', 'pits', 'pitting', 'pit road', 'pit lane', 'box box', 'service'];
-        const retireWords = ['out of the race', 'retired', 'crashed out', 'hit the wall', 'engine blew', 'broken down', 'blown engine', 'accident', 'garage', 'towed back'];
+        const pitWords = ['pit', 'pits', 'pitting', 'pit road', 'pit lane', 'box box', 'service', 'pet road', 'fit road', 'bit road', 'peat road'];
+        const retireWords = [
+          'out of the race', 'retired', 'crashed out', 'hit the wall', 'engine blew', 'broken down', 
+          'blown engine', 'accident', 'garage', 'towed back', 'expire', 'expired'
+        ];
         
         const isPitting = pitWords.some(w => cleanText.includes(w));
         const isRetiring = retireWords.some(w => cleanText.includes(w));
@@ -282,87 +379,276 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     addVoiceEventRef.current = addVoiceEvent;
   }, [addVoiceEvent]);
 
+  // Visualizer loop using requestAnimationFrame
   useEffect(() => {
+    if (!isVoiceSyncActive || audioSource !== 'tab' || !analyserRef.current) {
+      // Clear visualizer heights if not active or using mic
+      if (visualizerRef.current) {
+        const strokes = visualizerRef.current.querySelectorAll('.stroke');
+        strokes.forEach((stroke: any) => {
+          stroke.style.height = ''; // Let CSS animation take over
+          stroke.style.animation = '';
+        });
+      }
+      return;
+    }
+
+    const analyser = analyserRef.current;
+    analyser.fftSize = 32;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const updateVisualizer = () => {
+      if (!analyserRef.current) return;
+      analyser.getByteFrequencyData(dataArray);
+
+      if (visualizerRef.current) {
+        const strokes = visualizerRef.current.querySelectorAll('.stroke');
+        strokes.forEach((stroke: any, idx: number) => {
+          // Map frequency data to height (between 3px and 18px)
+          const val = dataArray[idx % bufferLength] || 0;
+          const height = 3 + (val / 255) * 15;
+          stroke.style.height = `${height}px`;
+          stroke.style.animation = 'none'; // Disable keyframe animation while driving with data
+        });
+      }
+
+      animationFrameRef.current = requestAnimationFrame(updateVisualizer);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(updateVisualizer);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isVoiceSyncActive, audioSource]);
+
+  useEffect(() => {
+    let active = true;
+
     if (!isVoiceSyncActive) {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {}
+        recognitionRef.current = null;
       }
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      addVoiceEventRef.current('Speech recognition not supported in this browser.');
-      setIsVoiceSyncActive(false);
-      return;
-    }
-
-    const rec = new SpeechRecognition();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = 'en-US';
-
-    rec.onstart = () => {
-      addVoiceEventRef.current('Listening to broadcast audio...');
-    };
-
-    rec.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-      addVoiceEventRef.current(`Error: ${event.error}`);
-      if (event.error === 'not-allowed') {
+    const initSpeech = async () => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        addVoiceEventRef.current('Speech recognition not supported in this browser.');
         setIsVoiceSyncActive(false);
+        return;
       }
-    };
 
-    rec.onend = () => {
-      if (isVoiceSyncActiveRef.current) {
-        try {
-          rec.start();
-        } catch (e) {}
-      } else {
-        addVoiceEventRef.current('Voice sync stopped.');
-      }
-    };
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
 
-    rec.onresult = (event: any) => {
-      let interim = '';
-      let final = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript;
+      rec.onstart = () => {
+        addVoiceEventRef.current(
+          audioSource === 'tab' 
+            ? 'Voice Sync: Listening directly to Tab Audio...' 
+            : 'Voice Sync: Listening to Microphone...'
+        );
+      };
+
+      rec.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          addVoiceEventRef.current(`Error: ${event.error}`);
+        }
+        if (event.error === 'not-allowed') {
+          setIsVoiceSyncActive(false);
+        }
+      };
+
+      rec.onend = () => {
+        if (isVoiceSyncActiveRef.current) {
+          restartTimeoutRef.current = setTimeout(() => {
+            if (!active) return;
+            try {
+              if (audioSource === 'tab' && audioTrackRef.current && audioTrackRef.current.readyState === 'live') {
+                rec.start(audioTrackRef.current);
+              } else {
+                rec.start();
+              }
+            } catch (e) {
+              console.warn('Speech recognition restart failed:', e);
+            }
+          }, 300);
         } else {
-          interim += event.results[i][0].transcript;
+          addVoiceEventRef.current('Voice sync stopped.');
+        }
+      };
+
+      rec.onresult = (event: any) => {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            final += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+
+        if (interim) {
+          setTranscriptText(interim);
+          processVoiceCommandRef.current(interim);
+        }
+
+        if (final) {
+          setTranscriptText(final);
+          processVoiceCommandRef.current(final);
+        }
+      };
+
+      recognitionRef.current = rec;
+
+      if (audioSource === 'tab') {
+        try {
+          const displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }
+          });
+
+          if (!active) {
+            displayStream.getTracks().forEach(t => t.stop());
+            return;
+          }
+
+          streamRef.current = displayStream;
+
+          const audioTracks = displayStream.getAudioTracks();
+          if (audioTracks.length === 0) {
+            addVoiceEventRef.current('Error: No audio track shared! Ensure you check the "Share tab audio" option.');
+            setIsVoiceSyncActive(false);
+            displayStream.getTracks().forEach(t => t.stop());
+            return;
+          }
+
+          const rawTrack = audioTracks[0];
+          rawTrack.onended = () => {
+            addVoiceEventRef.current('Direct tab audio stream ended.');
+            setIsVoiceSyncActive(false);
+          };
+
+          if (enableFilter) {
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const audioCtx = new AudioContextClass();
+            audioCtxRef.current = audioCtx;
+
+            const sourceNode = audioCtx.createMediaStreamSource(displayStream);
+            
+            const filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'bandpass';
+            filterNode.frequency.value = 1500;
+            filterNode.Q.value = 1.0; 
+
+            const analyserNode = audioCtx.createAnalyser();
+            analyserNode.fftSize = 32;
+            analyserRef.current = analyserNode;
+
+            const destNode = audioCtx.createMediaStreamDestination();
+
+            sourceNode.connect(filterNode);
+            filterNode.connect(analyserNode);
+            filterNode.connect(destNode);
+
+            const filteredTrack = destNode.stream.getAudioTracks()[0];
+            audioTrackRef.current = filteredTrack;
+            addVoiceEventRef.current('Engine Noise Filter applied (400Hz - 3400Hz).');
+          } else {
+            audioTrackRef.current = rawTrack;
+
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const audioCtx = new AudioContextClass();
+            audioCtxRef.current = audioCtx;
+
+            const sourceNode = audioCtx.createMediaStreamSource(displayStream);
+            const analyserNode = audioCtx.createAnalyser();
+            analyserNode.fftSize = 32;
+            analyserRef.current = analyserNode;
+
+            sourceNode.connect(analyserNode);
+            addVoiceEventRef.current('Raw audio capture active (no filter).');
+          }
+        } catch (err: any) {
+          console.error('Failed to capture tab audio:', err);
+          if (err.name === 'NotAllowedError') {
+            addVoiceEventRef.current('Audio share cancelled by user.');
+          } else {
+            addVoiceEventRef.current(`Tab capture error: ${err.message}`);
+          }
+          setIsVoiceSyncActive(false);
+          return;
         }
       }
 
-      if (interim) {
-        setTranscriptText(interim);
-        processVoiceCommandRef.current(interim); // Process interim results too!
-      }
-
-      if (final) {
-        setTranscriptText(final);
-        processVoiceCommandRef.current(final);
+      try {
+        if (audioSource === 'tab' && audioTrackRef.current) {
+          rec.start(audioTrackRef.current);
+        } else {
+          rec.start();
+        }
+      } catch (err: any) {
+        console.warn('SpeechRecognition start with MediaStreamTrack failed, falling back to system mic:', err);
+        addVoiceEventRef.current('Direct audio routing unsupported. Using default microphone.');
+        try {
+          rec.start();
+        } catch (err2) {
+          console.error('Fallback speech recognition failed:', err2);
+        }
       }
     };
 
-    recognitionRef.current = rec;
-    try {
-      rec.start();
-    } catch (e) {
-      console.error('Error starting recognition:', e);
-    }
+    initSpeech();
 
     return () => {
+      active = false;
+      
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {}
+        recognitionRef.current = null;
       }
+
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
+
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      
+      analyserRef.current = null;
+      audioTrackRef.current = null;
     };
-  }, [isVoiceSyncActive]);
+  }, [isVoiceSyncActive, audioSource, enableFilter]);
 
   const handleLapSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -437,7 +723,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <span style={{ fontSize: '12px' }}>🎙️</span> AI Broadcast Voice Sync
               </label>
               {isVoiceSyncActive && (
-                <div className="audio-wave">
+                <div className="audio-wave" ref={visualizerRef}>
                   <span className="stroke"></span>
                   <span className="stroke"></span>
                   <span className="stroke"></span>
@@ -446,6 +732,76 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Audio Source Selection */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+              <button
+                type="button"
+                className={`mult-btn ${audioSource === 'mic' ? 'active' : ''}`}
+                onClick={() => setAudioSource('mic')}
+                disabled={isVoiceSyncActive}
+                style={{
+                  fontSize: '9.5px',
+                  padding: '5px 4px',
+                  background: audioSource === 'mic' ? 'rgba(255, 77, 0, 0.12)' : 'rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  color: audioSource === 'mic' ? 'var(--accent)' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  opacity: isVoiceSyncActive ? 0.5 : 1
+                }}
+              >
+                🎤 System Mic
+              </button>
+              <button
+                type="button"
+                className={`mult-btn ${audioSource === 'tab' ? 'active' : ''}`}
+                onClick={() => setAudioSource('tab')}
+                disabled={isVoiceSyncActive}
+                style={{
+                  fontSize: '9.5px',
+                  padding: '5px 4px',
+                  background: audioSource === 'tab' ? 'rgba(0, 229, 255, 0.12)' : 'rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  color: audioSource === 'tab' ? 'var(--cyan-accent)' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  opacity: isVoiceSyncActive ? 0.5 : 1
+                }}
+              >
+                💻 Direct Tab
+              </button>
+            </div>
+
+            {/* Filter Toggle (only visible for Tab capture) */}
+            {audioSource === 'tab' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '4px 6px', background: 'rgba(0, 229, 255, 0.04)', border: '1px solid rgba(0, 229, 255, 0.1)', borderRadius: '4px' }}>
+                <span style={{ fontSize: '10px', color: '#aaa', fontWeight: '600' }}>Engine Noise Filter (Bandpass)</span>
+                <button
+                  type="button"
+                  onClick={() => setEnableFilter(!enableFilter)}
+                  disabled={isVoiceSyncActive}
+                  style={{
+                    background: enableFilter ? 'var(--cyan-accent)' : 'rgba(255,255,255,0.08)',
+                    color: enableFilter ? '#000' : '#888',
+                    border: 'none',
+                    borderRadius: '3px',
+                    padding: '2px 8px',
+                    fontSize: '9px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    opacity: isVoiceSyncActive ? 0.5 : 1
+                  }}
+                >
+                  {enableFilter ? 'ACTIVE' : 'BYPASS'}
+                </button>
+              </div>
+            )}
 
             <button 
               type="button"
@@ -505,7 +861,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 229, 255, 0.08)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
               >
-                {showSetupGuide ? '▲ Hide Direct Audio Setup Guide' : '💡 TV/Stream Direct Audio Guide'}
+                {showSetupGuide ? '▲ Hide Audio Setup Guide' : '💡 TV/Stream Audio Setup Guide'}
               </button>
             </div>
 
@@ -521,13 +877,28 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 color: '#ccc',
                 lineHeight: '1.4'
               }}>
-                <span style={{ color: 'var(--cyan-accent)', fontWeight: '700', fontSize: '9px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>How to Capture Streaming Tab Audio Directly:</span>
-                <ol style={{ paddingLeft: '14px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <li>Install a virtual audio cable loopback tool (e.g. <strong>BlackHole 2ch</strong> for Mac or <strong>VB-Cable</strong> for Windows/Mac).</li>
-                  <li>Set your computer's system audio output to the virtual loopback device (so tab audio routes digitally into it).</li>
-                  <li>In Chrome's address bar, click the microphone/site settings icon and select the virtual loopback (e.g. <em>BlackHole 2ch</em>) as Chrome's default input source.</li>
-                  <li>Play the race stream. The voice parser will now receive 100% clean digital audio, completely unaffected by room noise!</li>
-                </ol>
+                {audioSource === 'tab' ? (
+                  <>
+                    <span style={{ color: 'var(--cyan-accent)', fontWeight: '700', fontSize: '9px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>How to use Direct Tab Capture:</span>
+                    <ol style={{ paddingLeft: '14px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <li>Click <strong>Enable AI Audio Sync</strong> below.</li>
+                      <li>In the browser popup, go to the <strong>Chrome Tab</strong> section.</li>
+                      <li>Select the tab playing your live race stream (e.g. YouTube, Fubo).</li>
+                      <li><strong style={{ color: '#fff' }}>CRITICAL:</strong> Check the <strong>"Share tab audio"</strong> box at the bottom of the popup before clicking <strong>Share</strong>.</li>
+                      <li>The app will capture clean digital audio directly, and route it through the bandpass filter!</li>
+                    </ol>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ color: 'var(--accent)', fontWeight: '700', fontSize: '9px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>How to use Microphone / Loopback:</span>
+                    <ol style={{ paddingLeft: '14px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <li>Turn up your speakers so Chrome's microphone can hear the commentators (noisy/unreliable).</li>
+                      <li>Or, to bypass room noise, use a loopback tool like <strong>BlackHole 2ch</strong> (Mac) or <strong>VB-Cable</strong> (Windows).</li>
+                      <li>Set your OS sound output to the loopback device, and set Chrome's default microphone input to that same loopback device.</li>
+                      <li>Click <strong>Enable AI Audio Sync</strong> to listen.</li>
+                    </ol>
+                  </>
+                )}
               </div>
             )}
 
