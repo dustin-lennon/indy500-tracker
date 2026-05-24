@@ -97,6 +97,7 @@ export const useRaceSimulation = () => {
           profile: getDriverProfile(d.id, d.name, d.team, i + 1),
           status: 'running',
           outReason: undefined,
+          pitTimeRemaining: undefined,
           pitStops: 0,
           lastPitLap: 0,
           lap: 0,
@@ -408,7 +409,7 @@ export const useRaceSimulation = () => {
             
             // Check if at pit box (simulated around 0.98)
             const atPitBox = dist >= 0.96 && dist <= 0.98;
-            if (atPitBox && driver.fuel < 98) {
+            if (atPitBox && (driver.pitTimeRemaining === undefined || driver.pitTimeRemaining > 0)) {
               // Stop!
               targetSpeed = 0;
               targetThrottle = 0;
@@ -485,6 +486,7 @@ export const useRaceSimulation = () => {
         let pitStops = driver.pitStops;
         let lastPitLap = driver.lastPitLap;
         let status = driver.status;
+        let pitTimeRemaining = driver.pitTimeRemaining;
 
         if (currentSpeed > 0) {
           // Yellow flag burns 4x less fuel/tires
@@ -506,20 +508,29 @@ export const useRaceSimulation = () => {
           // Pit next time we reach front stretch entry
           if (dist >= 0.85 && dist <= 0.92) {
             status = 'pitting';
+            pitTimeRemaining = 7.0 + Math.random() * 2.5; // 7.0 to 9.5 seconds
             addEvent('info', `${driver.name} (Car #${driver.carNumber}) enters pit road.`, flag);
           }
         }
 
         // Stopped in pit box refuels/retreads
         if (status === 'pitting' && currentSpeed === 0) {
-          // Add fuel and tires
-          fuel = Math.min(fuel + 5 * speedMultiplier, 100);
-          tireWear.lf = Math.min(tireWear.lf + 10 * speedMultiplier, 100);
-          tireWear.rf = Math.min(tireWear.rf + 10 * speedMultiplier, 100);
-          tireWear.lr = Math.min(tireWear.lr + 10 * speedMultiplier, 100);
-          tireWear.rr = Math.min(tireWear.rr + 10 * speedMultiplier, 100);
+          if (pitTimeRemaining === undefined) {
+            pitTimeRemaining = 7.0 + Math.random() * 2.0; // 7-9 seconds default if undefined
+          }
 
-          if (fuel >= 100 && tireWear.rf >= 100) {
+          // Decrement pit time remaining by simulation tickTime
+          pitTimeRemaining = Math.max(pitTimeRemaining - tickTime, 0);
+
+          // Refuel & change tires at a realistic rate
+          // A standard stop is ~8 seconds. We want to reach 100% in that time.
+          fuel = Math.min(fuel + 12.5 * tickTime, 100);
+          tireWear.lf = Math.min(tireWear.lf + 25 * tickTime, 100);
+          tireWear.rf = Math.min(tireWear.rf + 25 * tickTime, 100);
+          tireWear.lr = Math.min(tireWear.lr + 25 * tickTime, 100);
+          tireWear.rr = Math.min(tireWear.rr + 25 * tickTime, 100);
+
+          if (pitTimeRemaining === 0) {
             pitStops += 1;
             lastPitLap = driver.lap;
             // Complete pit stop
@@ -542,6 +553,7 @@ export const useRaceSimulation = () => {
           // Release pitting status once exiting pit lane (around Turn 1 entry, 0.15)
           if (status === 'pitting' && distanceIntoLap >= 0.15 && distanceIntoLap <= 0.50) {
             status = 'running';
+            pitTimeRemaining = undefined;
           }
         }
 
@@ -611,6 +623,7 @@ export const useRaceSimulation = () => {
           status,
           pitStops,
           lastPitLap,
+          pitTimeRemaining,
           telemetryHistory,
           lateralOffset: clampedOffset
         };
@@ -739,7 +752,8 @@ export const useRaceSimulation = () => {
         return {
           ...d,
           status: 'pitting',
-          distanceIntoLap: 0.92 // Place them right at pit entry
+          distanceIntoLap: 0.92, // Place them right at pit entry
+          pitTimeRemaining: 8.0
         };
       }
       return d;

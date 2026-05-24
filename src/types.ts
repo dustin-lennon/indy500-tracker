@@ -21,6 +21,7 @@ export interface Driver {
   prevPos: number;
   status: 'running' | 'pitting' | 'out';
   outReason?: string;
+  pitTimeRemaining?: number; // Simulation seconds remaining in pit box
   pitStops: number;
   lastPitLap: number;
   lap: number; // 0 - 200
