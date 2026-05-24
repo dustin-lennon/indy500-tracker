@@ -54,7 +54,7 @@ export const INITIAL_DRIVERS: Driver[] = [
   {
     id: '3',
     name: 'David Malukas',
-    carNumber: '2',
+    carNumber: '66',
     team: 'Team Penske',
     carColor: '#002855', // Penske Blue
     startingPos: 3,
@@ -504,7 +504,7 @@ export const INITIAL_DRIVERS: Driver[] = [
   {
     id: '21',
     name: 'Louis Foster',
-    carNumber: '15',
+    carNumber: '46',
     team: 'Rahal Letterman Lanigan',
     carColor: '#006064', // Dark Cyan
     startingPos: 21,
@@ -604,7 +604,7 @@ export const INITIAL_DRIVERS: Driver[] = [
   {
     id: '25',
     name: 'Mick Schumacher',
-    carNumber: '30',
+    carNumber: '47',
     team: 'Rahal Letterman Lanigan',
     carColor: '#002f6c', // German Blue/White
     startingPos: 25,

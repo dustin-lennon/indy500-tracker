@@ -903,20 +903,16 @@ export const useRaceSimulation = () => {
       const running = prev.filter(d => d.status !== 'out');
       const retired = prev.filter(d => d.status === 'out');
       
-      const runningMap = new Map<string, Driver>();
-      running.forEach(d => {
-        runningMap.set(d.carNumber, d);
-      });
-
       const reorderedRunning: Driver[] = [];
       const seenIds = new Set<string>();
 
       orderedCarNumbers.forEach(carNum => {
         const trimmed = carNum.trim();
-        const d = runningMap.get(trimmed);
-        if (d) {
-          reorderedRunning.push(d);
-          seenIds.add(d.id);
+        const matches = running.filter(d => d.carNumber === trimmed);
+        const match = matches.find(d => !seenIds.has(d.id));
+        if (match) {
+          reorderedRunning.push(match);
+          seenIds.add(match.id);
         }
       });
 
