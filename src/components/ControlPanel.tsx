@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { RaceFlag, SimulationMode, Driver } from '../types';
 
 interface ControlPanelProps {
@@ -40,6 +40,242 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [cautionReasonInput, setCautionReasonInput] = useState<string>('');
 
   const activeDrivers = drivers.filter((d) => d.status === 'running');
+
+  // --- AI AUDIO VOICE SYNC STATE & LOGIC ---
+  const [isVoiceSyncActive, setIsVoiceSyncActive] = useState<boolean>(false);
+  const [voiceLog, setVoiceLog] = useState<{ time: string; msg: string }[]>([]);
+  const [transcriptText, setTranscriptText] = useState<string>('');
+  const recognitionRef = useRef<any>(null);
+
+  const isVoiceSyncActiveRef = useRef(isVoiceSyncActive);
+  useEffect(() => {
+    isVoiceSyncActiveRef.current = isVoiceSyncActive;
+  }, [isVoiceSyncActive]);
+
+  const driversRef = useRef(drivers);
+  useEffect(() => {
+    driversRef.current = drivers;
+  }, [drivers]);
+
+  const addVoiceEvent = (msg: string) => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setVoiceLog(prev => [{ time: timeStr, msg }, ...prev].slice(0, 10));
+  };
+
+  // Spoken number to digits parser
+  const extractLapNumber = (text: string): number | null => {
+    const cleanText = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+    const words = cleanText.split(/\s+/).filter(Boolean);
+    
+    const lapIndex = words.findIndex(w => w === 'lap' || w === 'laps');
+    if (lapIndex === -1) return null;
+    
+    const targetWords = words.slice(lapIndex + 1, lapIndex + 5);
+    
+    for (const tw of targetWords) {
+      if (/^\d+$/.test(tw)) {
+        return parseInt(tw, 10);
+      }
+    }
+    
+    const units: Record<string, number> = {
+      zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+      ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+      seventeen: 17, eighteen: 18, nineteen: 19
+    };
+
+    const tens: Record<string, number> = {
+      twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90
+    };
+
+    let currentVal = 0;
+    let totalVal = 0;
+    let found = false;
+
+    for (const word of targetWords) {
+      if (word === 'and') continue;
+      
+      if (units[word] !== undefined) {
+        currentVal += units[word];
+        found = true;
+      } else if (tens[word] !== undefined) {
+        currentVal += tens[word];
+        found = true;
+      } else if (word === 'hundred') {
+        currentVal = (currentVal === 0 ? 1 : currentVal) * 100;
+        totalVal += currentVal;
+        currentVal = 0;
+        found = true;
+      } else {
+        if (found) break;
+      }
+    }
+    
+    totalVal += currentVal;
+    return found ? totalVal : null;
+  };
+
+  const processVoiceCommand = (text: string) => {
+    const cleanText = text.toLowerCase();
+    
+    // 1. Check Flags
+    if (cleanText.includes('green flag') || cleanText.includes('green green green') || cleanText.includes('back to green') || cleanText.includes('racing again') || cleanText.includes('restart')) {
+      syncSetFlag('green');
+      addVoiceEvent('Flag synced to GREEN');
+      return;
+    }
+    if (cleanText.includes('yellow flag') || cleanText.includes('caution is out') || cleanText.includes('safety car') || cleanText.includes('pace car') || cleanText.includes('full course yellow')) {
+      let reason = 'Caution flag triggered via voice sync';
+      if (cleanText.includes('crash') || cleanText.includes('accident') || cleanText.includes('spin')) {
+        reason = 'Caution: Incident reported on track';
+      } else if (cleanText.includes('debris')) {
+        reason = 'Caution: Debris reported on track';
+      }
+      syncSetFlag('yellow', reason);
+      addVoiceEvent(`Flag synced to YELLOW (${reason})`);
+      return;
+    }
+    if (cleanText.includes('red flag') || cleanText.includes('race is stopped') || cleanText.includes('stopped the race')) {
+      syncSetFlag('red');
+      addVoiceEvent('Flag synced to RED');
+      return;
+    }
+    if (cleanText.includes('white flag') || cleanText.includes('final lap') || cleanText.includes('one lap to go')) {
+      syncSetFlag('white');
+      addVoiceEvent('Flag synced to WHITE');
+      return;
+    }
+    if (cleanText.includes('checkered flag') || cleanText.includes('race is finished') || cleanText.includes('wins the race') || cleanText.includes('winner crossing')) {
+      syncSetFlag('checkered');
+      addVoiceEvent('Flag synced to CHECKERED');
+      return;
+    }
+
+    // 2. Check Laps
+    const parsedLap = extractLapNumber(cleanText);
+    if (parsedLap !== null && parsedLap >= 0 && parsedLap <= 200) {
+      syncSetLap(parsedLap);
+      addVoiceEvent(`Lap synced to Lap ${parsedLap}`);
+      return;
+    }
+
+    // 3. Check Drivers
+    for (const d of driversRef.current) {
+      const lastName = d.name.split(' ').pop()?.toLowerCase() || '';
+      const fullName = d.name.toLowerCase();
+      const carNum = d.carNumber;
+      
+      const nameMentioned = cleanText.includes(lastName) || cleanText.includes(fullName);
+      const carMentionRegex = new RegExp(`\\b(car|number)\\s+${carNum}\\b`);
+      const carMentioned = carMentionRegex.test(cleanText);
+      
+      if (nameMentioned || carMentioned) {
+        const pitWords = ['pit', 'pits', 'pitting', 'pit road', 'pit lane', 'box box', 'service'];
+        const retireWords = ['out of the race', 'retired', 'crashed out', 'hit the wall', 'engine blew', 'broken down', 'blown engine', 'accident', 'garage', 'towed back'];
+        
+        const isPitting = pitWords.some(w => cleanText.includes(w));
+        const isRetiring = retireWords.some(w => cleanText.includes(w));
+        
+        if (isRetiring) {
+          let reason = 'Retired (via Voice Sync)';
+          if (cleanText.includes('engine') || cleanText.includes('blown') || cleanText.includes('blown engine')) {
+            reason = 'Engine failure';
+          } else if (cleanText.includes('wall') || cleanText.includes('crash') || cleanText.includes('crashed')) {
+            reason = 'Accident';
+          }
+          syncRetireDriver(d.id, reason);
+          addVoiceEvent(`Driver retired: ${d.name} (${reason})`);
+          return;
+        } else if (isPitting) {
+          syncOrderPitStop(d.id);
+          addVoiceEvent(`Driver pitted: ${d.name}`);
+          return;
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isVoiceSyncActive) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      addVoiceEvent('Speech recognition not supported in this browser.');
+      setIsVoiceSyncActive(false);
+      return;
+    }
+
+    const rec = new SpeechRecognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+
+    rec.onstart = () => {
+      addVoiceEvent('Listening to broadcast audio...');
+    };
+
+    rec.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      addVoiceEvent(`Error: ${event.error}`);
+      if (event.error === 'not-allowed') {
+        setIsVoiceSyncActive(false);
+      }
+    };
+
+    rec.onend = () => {
+      if (isVoiceSyncActiveRef.current) {
+        try {
+          rec.start();
+        } catch (e) {}
+      } else {
+        addVoiceEvent('Voice sync stopped.');
+      }
+    };
+
+    rec.onresult = (event: any) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+
+      if (interim) {
+        setTranscriptText(interim);
+      }
+
+      if (final) {
+        setTranscriptText(final);
+        processVoiceCommand(final);
+      }
+    };
+
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+    } catch (e) {
+      console.error('Error starting recognition:', e);
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+    };
+  }, [isVoiceSyncActive]);
 
   const handleLapSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +341,106 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 {mult}x
               </button>
             ))}
+          </div>
+
+          {/* AI Voice Sync Section */}
+          <div style={{ marginTop: '14px', borderTop: '1px dashed rgba(255, 77, 0, 0.15)', paddingTop: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent)' }}>
+                <span style={{ fontSize: '12px' }}>🎙️</span> AI Broadcast Voice Sync
+              </label>
+              {isVoiceSyncActive && (
+                <div className="audio-wave">
+                  <span className="stroke"></span>
+                  <span className="stroke"></span>
+                  <span className="stroke"></span>
+                  <span className="stroke"></span>
+                  <span className="stroke"></span>
+                </div>
+              )}
+            </div>
+
+            <button 
+              type="button"
+              className={`voice-sync-btn ${isVoiceSyncActive ? 'listening' : ''}`}
+              onClick={() => setIsVoiceSyncActive(!isVoiceSyncActive)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: isVoiceSyncActive ? '1px solid #ff4e00' : '1px solid rgba(255,255,255,0.08)',
+                background: isVoiceSyncActive ? 'rgba(255, 78, 0, 0.1)' : 'rgba(0,0,0,0.2)',
+                color: isVoiceSyncActive ? '#ff6d00' : '#fff',
+                fontSize: '10px',
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+                boxShadow: isVoiceSyncActive ? '0 0 10px rgba(255, 78, 0, 0.15)' : 'none'
+              }}
+            >
+              {isVoiceSyncActive ? (
+                <>
+                  <span className="pulse-red-dot" />
+                  Stop Voice Sync
+                </>
+              ) : (
+                <>
+                  <span>🎙️</span>
+                  Enable AI Audio Sync
+                </>
+              )}
+            </button>
+
+            {isVoiceSyncActive && (
+              <div className="transcript-box" style={{
+                marginTop: '8px',
+                padding: '6px 8px',
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: '#888',
+                minHeight: '38px',
+                maxHeight: '50px',
+                overflowY: 'auto',
+                whiteSpace: 'pre-wrap'
+              }}>
+                <span style={{ color: '#aaa', fontSize: '9px', display: 'block', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hearing:</span>
+                {transcriptText || 'Listening for TV commentators...'}
+              </div>
+            )}
+
+            {voiceLog.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <label className="stat-label" style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detected Events</label>
+                <div style={{
+                  marginTop: '4px',
+                  background: 'rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(255,255,255,0.03)',
+                  borderRadius: '4px',
+                  padding: '6px',
+                  maxHeight: '90px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}>
+                  {voiceLog.map((log, index) => (
+                    <div key={index} style={{ display: 'flex', gap: '6px', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>[{log.time}]</span>
+                      <span style={{ color: '#ffcc80' }}>{log.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -203,6 +539,49 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
       {/* Styles */}
       <style>{`
+        .pulse-red-dot {
+          width: 8px;
+          height: 8px;
+          background: #ff1744;
+          border-radius: 50%;
+          display: inline-block;
+          box-shadow: 0 0 6px #ff1744;
+          animation: dot-pulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes dot-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.5; }
+        }
+
+        .audio-wave {
+          display: flex;
+          align-items: flex-end;
+          gap: 2.5px;
+          height: 12px;
+        }
+
+        .audio-wave .stroke {
+          display: block;
+          position: relative;
+          background: #ff6d00;
+          height: 100%;
+          width: 2px;
+          border-radius: 50px;
+          animation: wave-rise 1.2s infinite ease-in-out;
+        }
+
+        .audio-wave .stroke:nth-child(1) { animation-delay: 0.0s; }
+        .audio-wave .stroke:nth-child(2) { animation-delay: 0.3s; }
+        .audio-wave .stroke:nth-child(3) { animation-delay: 0.6s; }
+        .audio-wave .stroke:nth-child(4) { animation-delay: 0.9s; }
+        .audio-wave .stroke:nth-child(5) { animation-delay: 0.2s; }
+
+        @keyframes wave-rise {
+          0%, 100% { height: 3px; }
+          50% { height: 12px; }
+        }
+
         .control-panel {
           padding: 14px;
           display: flex;
