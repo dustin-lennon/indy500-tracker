@@ -12,7 +12,7 @@ export default defineConfig({
         rewrite: () => '',
       },
       '/api/racetrax': {
-        target: 'https://www.foxsports.com/motor/110th-running-of-the-indianapolis-500-ntt-indycar-series-may-24-2026-racetrax-6052',
+        target: 'https://api.foxsports.com/bifrost/v1/nascar/event/6052/data?apikey=jE7yBJVRNAwdDesMgTzTXUUSx1It41Fq',
         changeOrigin: true,
         rewrite: () => '',
       }

@@ -250,7 +250,7 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
     }
   }, [isAutoSync, parseAndApplyPost, addLog]);
 
-  // ---- RACETRAX LEADERBOARD FETCHING & DEVALUING ----
+  // ---- RACETRAX LEADERBOARD FETCHING ----
   const fetchRacetrax = useCallback(async (silent = false) => {
     if (!silent) setIsRacetraxLoading(true);
     setRacetraxError(null);
@@ -259,62 +259,17 @@ export const LiveBlogSync: React.FC<LiveBlogSyncProps> = ({
       if (!response.ok) {
         throw new Error(`HTTP Error ${response.status}: Failed to reach Racetrax proxy.`);
       }
-      const htmlText = await response.text();
+      const pageData = await response.json();
       
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, 'text/html');
-      const scriptTag = doc.getElementById('__NUXT_DATA__');
-      
-      if (!scriptTag || !scriptTag.textContent) {
-        throw new Error('Could not find __NUXT_DATA__ script tag in Racetrax page.');
+      if (!pageData || !pageData.leaderboard || !pageData.leaderboard.leaderboardSections) {
+        throw new Error('API data structure does not contain expected event or leaderboard elements.');
       }
 
-      const rawData = JSON.parse(scriptTag.textContent);
-      
-      // Recursive resolver for Nuxt 3 devalued JSON payload
-      const cache = new Map();
-      function resolve(idx: any): any {
-        if (typeof idx !== 'number' || idx < 0 || idx >= rawData.length) {
-          return idx;
-        }
-        if (cache.has(idx)) {
-          return cache.get(idx);
-        }
-        const val = rawData[idx];
-        if (val === null || val === undefined) {
-          return val;
-        }
-        if (Array.isArray(val)) {
-          const res: any[] = [];
-          cache.set(idx, res);
-          val.forEach(item => {
-            res.push(resolve(item));
-          });
-          return res;
-        } else if (typeof val === 'object') {
-          const res: any = {};
-          cache.set(idx, res);
-          Object.keys(val).forEach(key => {
-            res[key] = resolve(val[key]);
-          });
-          return res;
-        } else {
-          return val;
-        }
-      }
-
-      const unpacked = resolve(2);
-      const rootObj = Array.isArray(unpacked) ? unpacked[1] : unpacked;
-      const pageData = rootObj ? rootObj['options:asyncdata:event-page'] : undefined;
-      if (!pageData || !pageData.tabContent || !pageData.tabContent.event || !pageData.tabContent.event.leaderboard) {
-        throw new Error('Nuxt data structure does not contain expected event or leaderboard elements.');
-      }
-
-      const sections = pageData.tabContent.event.leaderboard.leaderboardSections || [];
+      const sections = pageData.leaderboard.leaderboardSections || [];
       const raceSection = sections.find((s: any) => s.parameters && s.parameters.leaderboardId === 'race');
       
       if (!raceSection || !raceSection.leaderboard || !raceSection.leaderboard[0] || !raceSection.leaderboard[0].eventStats || !raceSection.leaderboard[0].eventStats.rows) {
-        throw new Error('Could not find the live RACE standings section in the Nuxt payload.');
+        throw new Error('Could not find the live RACE standings section in the API payload.');
       }
 
       const rows = raceSection.leaderboard[0].eventStats.rows;
