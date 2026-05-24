@@ -200,6 +200,7 @@ function App() {
                       syncSetLap={syncSetLap}
                       syncOrderPitStop={syncOrderPitStop}
                       syncRetireDriver={syncRetireDriver}
+                      syncSetBulkPositions={syncSetBulkPositions}
                     />
                   )}
                 </div>
