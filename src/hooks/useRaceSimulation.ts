@@ -14,12 +14,18 @@ const formatTime = (totalSeconds: number): string => {
 export const useRaceSimulation = () => {
   // State
   const [drivers, setDrivers] = useState<Driver[]>(() => {
-    // Distribute starting distances slightly so they start in rows of 3
-    return INITIAL_DRIVERS.map((d, i) => ({
-      ...d,
-      distanceIntoLap: 0.9 - (i * 0.008), // Scaffolds the grid behind the start/finish line (1.0/0.0)
-      totalDistance: - (i * 0.008)
-    }));
+    // Distribute starting distances 3-wide (11 rows of 3)
+    return INITIAL_DRIVERS.map((d, i) => {
+      const r = Math.floor(i / 3); // Row 0 to 10
+      const p = i % 3;             // Position: 0=Inside, 1=Middle, 2=Outside
+      const dist = 0.88 - (r * 0.015) - (p * 0.002); // 3-wide stagger spacing
+      return {
+        ...d,
+        distanceIntoLap: dist,
+        totalDistance: dist,
+        lateralOffset: (p === 0) ? -7 : (p === 1) ? 0 : 7 // Inside, Middle, Outside shifts
+      };
+    });
   });
   
   const [flag, setFlag] = useState<RaceFlag>('red'); // Start under red (paused/warmup)
@@ -78,24 +84,30 @@ export const useRaceSimulation = () => {
     cautionOrderRef.current = [];
     
     setDrivers(
-      INITIAL_DRIVERS.map((d, i) => ({
-        ...d,
-        distanceIntoLap: 0.9 - (i * 0.008),
-        totalDistance: - (i * 0.008),
-        status: 'running',
-        outReason: undefined,
-        pitStops: 0,
-        lastPitLap: 0,
-        lap: 0,
-        speed: 0,
-        rpm: 0,
-        gear: 1,
-        throttle: 0,
-        brake: 0,
-        fuel: 100,
-        tireWear: { lf: 100, rf: 100, lr: 100, rr: 100 },
-        telemetryHistory: []
-      }))
+      INITIAL_DRIVERS.map((d, i) => {
+        const r = Math.floor(i / 3); // Row 0 to 10
+        const p = i % 3;             // Position: 0=Inside, 1=Middle, 2=Outside
+        const dist = 0.88 - (r * 0.015) - (p * 0.002);
+        return {
+          ...d,
+          distanceIntoLap: dist,
+          totalDistance: dist,
+          lateralOffset: (p === 0) ? -7 : (p === 1) ? 0 : 7,
+          status: 'running',
+          outReason: undefined,
+          pitStops: 0,
+          lastPitLap: 0,
+          lap: 0,
+          speed: 0,
+          rpm: 0,
+          gear: 1,
+          throttle: 0,
+          brake: 0,
+          fuel: 100,
+          tireWear: { lf: 100, rf: 100, lr: 100, rr: 100 },
+          telemetryHistory: []
+        };
+      })
     );
     setFlag('red');
     setLap(0);
@@ -512,6 +524,42 @@ export const useRaceSimulation = () => {
           }
         }
 
+        // 3-wide start and racing line lateral offset simulation
+        let targetOffset = 0;
+        const isStartGrid = driverLap === 0 && distanceIntoLap < 0.95;
+        
+        if (isStartGrid) {
+          const gridCol = (driver.startingPos - 1) % 3;
+          targetOffset = (gridCol === 0) ? -7 : (gridCol === 1) ? 0 : 7;
+        } else if (flag === 'yellow') {
+          targetOffset = 0; // Bunch up single file behind pace car
+        } else {
+          // Green flag active racing
+          if (isCorner) {
+            targetOffset = -3; // Hug the inside line in corners
+          } else {
+            targetOffset = 0; // Default center straightaway line
+          }
+          
+          // Overtaking offset
+          const carAhead = prevDrivers.find(d => {
+            if (d.id === driver.id || d.status !== 'running') return false;
+            const diff = d.totalDistance - driver.totalDistance;
+            // Car within 200 feet ahead
+            return diff > 0.002 && diff < 0.012;
+          });
+          
+          if (carAhead) {
+            // Pull out of line (inside or outside depending on driver ID parity)
+            targetOffset = (parseInt(driver.id) % 2 === 0) ? 6 : -6;
+          }
+        }
+
+        const currentOffset = driver.lateralOffset !== undefined ? driver.lateralOffset : 0;
+        // Smoothly interpolate towards target offset
+        const newOffset = currentOffset + (targetOffset - currentOffset) * Math.min(0.04 * speedMultiplier, 1.0);
+        const clampedOffset = Math.max(Math.min(newOffset, 9), -9);
+
         // Update telemetry history (for the active driver details graph, cap history size)
         const historyPoint: TelemetryPoint = {
           time: simTimeRef.current,
@@ -542,7 +590,8 @@ export const useRaceSimulation = () => {
           status,
           pitStops,
           lastPitLap,
-          telemetryHistory
+          telemetryHistory,
+          lateralOffset: clampedOffset
         };
       });
 

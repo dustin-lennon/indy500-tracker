@@ -39,6 +39,7 @@ export interface Driver {
     rr: number; // Right Rear
   };
   telemetryHistory: TelemetryPoint[];
+  lateralOffset?: number; // Lateral offset for 3-wide start and racing lines (optional)
   
   // Skill ratings for the simulation engine
   skillRatings: {

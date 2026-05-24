@@ -60,7 +60,7 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
   }, []);
 
   // Retrieve coordinate mapping
-  const getCarCoordinates = (distanceIntoLap: number, isPitting: boolean): Point => {
+  const getCarCoordinates = (distanceIntoLap: number, isPitting: boolean, lateralOffset = 0): Point => {
     if (pathPoints.length === 0 || pitPoints.length === 0) {
       return { x: 400, y: 310 }; // Default start/finish
     }
@@ -85,7 +85,30 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
       return pitPoints[pitIdx] || { x: 400, y: 310 };
     }
 
-    return pathPoints[idx] || { x: 400, y: 310 };
+    const pt = { ...pathPoints[idx] }; // Clone to avoid mutating cash cache
+
+    if (lateralOffset !== 0) {
+      const idx2 = (idx + 2) % 1000;
+      const p1 = pathPoints[idx];
+      const p2 = pathPoints[idx2] || p1;
+      
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      
+      if (len > 0) {
+        const tx = dx / len;
+        const ty = dy / len;
+        // Normal unit vector pointing outwards (to the right of direction)
+        const nx = ty;
+        const ny = -tx;
+        
+        pt.x += lateralOffset * nx;
+        pt.y += lateralOffset * ny;
+      }
+    }
+
+    return pt;
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -218,7 +241,7 @@ export const SVGTrackMap: React.FC<SVGTrackMapProps> = ({
           {pathPoints.length > 0 && drivers.map((driver) => {
             if (driver.status === 'out') return null; // Don't draw crashed/retired cars
 
-            const pt = getCarCoordinates(driver.distanceIntoLap, driver.status === 'pitting');
+            const pt = getCarCoordinates(driver.distanceIntoLap, driver.status === 'pitting', driver.lateralOffset);
             const isSelected = selectedDriverId === driver.id;
 
             return (
