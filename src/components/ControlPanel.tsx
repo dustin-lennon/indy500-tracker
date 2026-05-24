@@ -45,7 +45,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [isVoiceSyncActive, setIsVoiceSyncActive] = useState<boolean>(false);
   const [voiceLog, setVoiceLog] = useState<{ time: string; msg: string }[]>([]);
   const [transcriptText, setTranscriptText] = useState<string>('');
+  const [showSetupGuide, setShowSetupGuide] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
+  const lastExecutedCommandsRef = useRef<Record<string, number>>({});
 
   const isVoiceSyncActiveRef = useRef(isVoiceSyncActive);
   useEffect(() => {
@@ -124,6 +126,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const processVoiceCommand = (text: string) => {
     const cleanText = text.toLowerCase();
     
+    const executeDebouncedCommand = (commandKey: string, action: () => void, debounceMs = 8000) => {
+      const now = Date.now();
+      const lastTime = lastExecutedCommandsRef.current[commandKey] || 0;
+      if (now - lastTime > debounceMs) {
+        lastExecutedCommandsRef.current[commandKey] = now;
+        action();
+      }
+    };
+
     // Playback start/pause general commands
     const startTriggers = [
       'start the race', 'start race', 'start the simulation', 'start simulation', 
@@ -141,25 +152,31 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     const shouldPause = pauseTriggers.some(trigger => cleanText.includes(trigger));
 
     if (shouldPlay && !isPlayingRef.current) {
-      togglePlay();
-      addVoiceEvent('Sim started via voice command');
-      if (flag === 'red') {
-        syncSetFlag('yellow', 'Pace laps started via voice command');
-      }
+      executeDebouncedCommand('sim-play', () => {
+        togglePlay();
+        addVoiceEvent('Sim started via voice command');
+        if (flag === 'red') {
+          syncSetFlag('yellow', 'Pace laps started via voice command');
+        }
+      });
       return;
     } else if (shouldPause && isPlayingRef.current) {
-      togglePlay();
-      addVoiceEvent('Sim paused via voice command');
+      executeDebouncedCommand('sim-pause', () => {
+        togglePlay();
+        addVoiceEvent('Sim paused via voice command');
+      });
       return;
     }
 
     // 1. Check Flags
     if (cleanText.includes('green') || cleanText.includes('restart') || cleanText.includes('racing again') || cleanText.includes('resumes')) {
-      syncSetFlag('green');
-      addVoiceEvent('Flag synced to GREEN');
-      if (!isPlayingRef.current) {
-        togglePlay();
-      }
+      executeDebouncedCommand('flag-green', () => {
+        syncSetFlag('green');
+        addVoiceEvent('Flag synced to GREEN');
+        if (!isPlayingRef.current) {
+          togglePlay();
+        }
+      });
       return;
     }
     if (cleanText.includes('yellow') || cleanText.includes('caution') || cleanText.includes('safety car') || cleanText.includes('pace car') || cleanText.includes('full course yellow') || cleanText.includes('debris') || cleanText.includes('incident') || cleanText.includes('accident')) {
@@ -169,37 +186,48 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       } else if (cleanText.includes('debris')) {
         reason = 'Caution: Debris reported on track';
       }
-      syncSetFlag('yellow', reason);
-      addVoiceEvent(`Flag synced to YELLOW (${reason})`);
-      if (!isPlayingRef.current) {
-        togglePlay();
-      }
+      const r = reason;
+      executeDebouncedCommand('flag-yellow', () => {
+        syncSetFlag('yellow', r);
+        addVoiceEvent(`Flag synced to YELLOW (${r})`);
+        if (!isPlayingRef.current) {
+          togglePlay();
+        }
+      });
       return;
     }
     if (cleanText.includes('red flag') || (cleanText.includes('red') && cleanText.includes('flag')) || cleanText.includes('race is stopped') || cleanText.includes('stopped the race')) {
-      syncSetFlag('red');
-      addVoiceEvent('Flag synced to RED');
-      if (isPlayingRef.current) {
-        togglePlay();
-      }
+      executeDebouncedCommand('flag-red', () => {
+        syncSetFlag('red');
+        addVoiceEvent('Flag synced to RED');
+        if (isPlayingRef.current) {
+          togglePlay();
+        }
+      });
       return;
     }
     if (cleanText.includes('white') || cleanText.includes('final lap') || cleanText.includes('one lap to go') || cleanText.includes('last lap')) {
-      syncSetFlag('white');
-      addVoiceEvent('Flag synced to WHITE');
+      executeDebouncedCommand('flag-white', () => {
+        syncSetFlag('white');
+        addVoiceEvent('Flag synced to WHITE');
+      });
       return;
     }
     if (cleanText.includes('checkered') || cleanText.includes('finished') || cleanText.includes('wins the race') || cleanText.includes('winner crossing') || cleanText.includes('takes the win')) {
-      syncSetFlag('checkered');
-      addVoiceEvent('Flag synced to CHECKERED');
+      executeDebouncedCommand('flag-checkered', () => {
+        syncSetFlag('checkered');
+        addVoiceEvent('Flag synced to CHECKERED');
+      });
       return;
     }
 
     // 2. Check Laps
     const parsedLap = extractLapNumber(cleanText);
     if (parsedLap !== null && parsedLap >= 0 && parsedLap <= 200) {
-      syncSetLap(parsedLap);
-      addVoiceEvent(`Lap synced to Lap ${parsedLap}`);
+      executeDebouncedCommand(`lap-${parsedLap}`, () => {
+        syncSetLap(parsedLap);
+        addVoiceEvent(`Lap synced to Lap ${parsedLap}`);
+      });
       return;
     }
 
@@ -227,12 +255,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           } else if (cleanText.includes('wall') || cleanText.includes('crash') || cleanText.includes('crashed')) {
             reason = 'Accident';
           }
-          syncRetireDriver(d.id, reason);
-          addVoiceEvent(`Driver retired: ${d.name} (${reason})`);
+          const r = reason;
+          executeDebouncedCommand(`retire-${d.id}`, () => {
+            syncRetireDriver(d.id, r);
+            addVoiceEvent(`Driver retired: ${d.name} (${r})`);
+          });
           return;
         } else if (isPitting) {
-          syncOrderPitStop(d.id);
-          addVoiceEvent(`Driver pitted: ${d.name}`);
+          executeDebouncedCommand(`pit-${d.id}`, () => {
+            syncOrderPitStop(d.id);
+            addVoiceEvent(`Driver pitted: ${d.name}`);
+          });
           return;
         }
       }
@@ -306,6 +339,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
       if (interim) {
         setTranscriptText(interim);
+        processVoiceCommandRef.current(interim); // Process interim results too!
       }
 
       if (final) {
@@ -449,6 +483,53 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </>
               )}
             </button>
+
+            {/* TV Audio Setup Guide Toggle Button */}
+            <div style={{ marginTop: '6px', textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowSetupGuide(!showSetupGuide)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--cyan-accent)',
+                  fontSize: '9px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  letterSpacing: '0.05em',
+                  padding: '2px 6px',
+                  borderRadius: '3px',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 229, 255, 0.08)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+              >
+                {showSetupGuide ? '▲ Hide Direct Audio Setup Guide' : '💡 TV/Stream Direct Audio Guide'}
+              </button>
+            </div>
+
+            {/* Collapsible Setup Guide content */}
+            {showSetupGuide && (
+              <div className="setup-guide-box" style={{
+                marginTop: '6px',
+                padding: '8px 10px',
+                background: 'rgba(0,0,0,0.45)',
+                border: '1px solid rgba(0, 229, 255, 0.15)',
+                borderRadius: '6px',
+                fontSize: '10.5px',
+                color: '#ccc',
+                lineHeight: '1.4'
+              }}>
+                <span style={{ color: 'var(--cyan-accent)', fontWeight: '700', fontSize: '9px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>How to Capture Streaming Tab Audio Directly:</span>
+                <ol style={{ paddingLeft: '14px', margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <li>Install a virtual audio cable loopback tool (e.g. <strong>BlackHole 2ch</strong> for Mac or <strong>VB-Cable</strong> for Windows/Mac).</li>
+                  <li>Set your computer's system audio output to the virtual loopback device (so tab audio routes digitally into it).</li>
+                  <li>In Chrome's address bar, click the microphone/site settings icon and select the virtual loopback (e.g. <em>BlackHole 2ch</em>) as Chrome's default input source.</li>
+                  <li>Play the race stream. The voice parser will now receive 100% clean digital audio, completely unaffected by room noise!</li>
+                </ol>
+              </div>
+            )}
 
             {isVoiceSyncActive && (
               <div className="transcript-box" style={{
